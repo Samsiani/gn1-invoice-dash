@@ -1,0 +1,598 @@
+/* ==========================================================================
+   Mini Dashboard Styles - Compact Horizontal Layout
+   Version: 2.3.0
+   ========================================================================== */
+
+.cig-mini-dashboard {
+  background: linear-gradient(135deg, #50529d 0%, #3d3e7a 100%);
+  border-radius: 6px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  position: sticky;
+  top: 32px;
+  z-index: 999;
+}
+
+.cig-mini-dash-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  gap: 20px;
+}
+
+/* Left: User Info & Stats - Horizontal Compact */
+.cig-mini-dash-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+}
+
+.cig-mini-user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 20px;
+  border-right: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.cig-mini-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.cig-mini-username {
+  font-weight: 600;
+  font-size: 14px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+/* Stats - Horizontal Compact */
+.cig-mini-stats-compact {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.cig-mini-stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  white-space: nowrap;
+}
+
+.cig-mini-stat-item.cig-expiring-alert {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.cig-mini-stat-item.cig-expiring-alert:hover {
+  opacity: 0.8;
+}
+
+.cig-mini-stat-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+}
+
+.cig-mini-stat-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.cig-loading-mini {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+}
+
+/* Expiring Badge */
+.cig-expiring-badge {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  background: #dc3545;
+  color: #fff;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  border: 2px solid #50529d;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+/* Right: Navigation */
+.cig-mini-dash-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cig-mini-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 5px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.cig-mini-nav-btn .dashicons {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.cig-mini-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #fff;
+}
+
+.cig-mini-nav-btn.cig-mini-btn-primary {
+  background: #ffc107;
+  border-color: #ffc107;
+  color: #333;
+  font-weight: 600;
+}
+
+.cig-mini-nav-btn.cig-mini-btn-primary:hover {
+  background: #ffca2c;
+  border-color: #ffca2c;
+  color: #333;
+}
+
+/* Dropdown */
+.cig-mini-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  width: 900px;
+  max-width: 90vw;
+  max-height: 70vh;
+  overflow: hidden;
+  z-index: 1000;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cig-mini-dropdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 2px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+.cig-mini-dropdown-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #333;
+  font-weight: 600;
+}
+
+.cig-mini-close-dropdown {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.cig-mini-close-dropdown:hover {
+  background: #e9ecef;
+  color: #333;
+}
+
+/* Filters - Compact Mode */
+.cig-mini-dropdown-filters.compact-mode {
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e9ecef;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  flex-wrap: nowrap; /* Force single line if space permits */
+}
+
+.cig-mini-quick-filters {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.cig-mini-filter-btn {
+  padding: 4px 10px;
+  border: 1px solid #e9ecef;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #555;
+  transition: all 0.2s ease;
+}
+
+.cig-mini-filter-btn:hover {
+  border-color: #50529d;
+  color: #50529d;
+}
+
+.cig-mini-filter-btn.active {
+  border-color: #50529d;
+  background: #50529d;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Compact Inputs Group */
+.cig-mini-inputs-group {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.cig-mini-select-filter {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #333;
+  background: #fff;
+  height: 28px;
+}
+
+.cig-mini-search-input {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  width: 140px;
+  height: 28px;
+}
+
+.cig-mini-dropdown-content {
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.cig-mini-invoices-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.cig-mini-invoices-table thead {
+  background: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.cig-mini-invoices-table th {
+  padding: 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #495057;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cig-mini-invoices-table tbody tr {
+  border-bottom: 1px solid #e9ecef;
+  transition: background 0.15s ease;
+}
+
+.cig-mini-invoices-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.cig-mini-invoices-table td {
+  padding: 10px;
+  color: #212529;
+  vertical-align: middle;
+}
+
+.cig-mini-invoice-number {
+  font-weight: 600;
+  color: #50529d;
+  text-decoration: none;
+}
+
+.cig-mini-invoice-number:hover {
+  text-decoration: underline;
+}
+
+/* Status / Type Badges */
+.cig-mini-type-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.cig-type-active {
+  color: #155724;
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+}
+.cig-type-fictive {
+  color: #721c24;
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+}
+
+.cig-mini-status-icons {
+  display: flex;
+  gap: 4px;
+}
+
+.cig-status-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.status-sold { background: #d4edda; color: #155724; }
+.status-reserved { background: #fff3cd; color: #856404; }
+.status-canceled { background: #f8d7da; color: #721c24; }
+
+.cig-mini-payment-badge {
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.payment-company_transfer { background: #d1ecf1; color: #0c5460; }
+.payment-cash { background: #d4edda; color: #155724; }
+.payment-mixed { background: #fff3cd; color: #856404; }
+.payment-consignment { background: #f8d7da; color: #721c24; }
+.payment-credit { background: #e2e3e5; color: #383d41; }
+
+.cig-mini-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.cig-mini-action-btn {
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  text-decoration: none;
+  border: 1px solid;
+  transition: all 0.2s ease;
+}
+
+.cig-mini-btn-view {
+  background: #fff;
+  border-color: #17a2b8;
+  color: #17a2b8;
+}
+
+.cig-mini-btn-view:hover {
+  background: #17a2b8;
+  color: #fff;
+}
+
+.cig-mini-btn-edit {
+  background: #fff;
+  border-color: #ffc107;
+  color: #856404;
+}
+
+.cig-mini-btn-edit:hover {
+  background: #ffc107;
+  color: #fff;
+}
+
+.cig-mini-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 30px;
+}
+
+.cig-mini-spinner {
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #50529d;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.cig-mini-loading p {
+  margin: 0;
+  color: #6c757d;
+  font-size: 12px;
+}
+
+.cig-mini-no-results {
+  padding: 30px;
+  text-align: center;
+  color: #6c757d;
+  font-size: 13px;
+}
+
+.cig-mini-dropdown-footer {
+  padding: 12px 20px;
+  background: #f8f9fa;
+  border-top: 1px solid #dee2e6;
+  text-align: center;
+}
+
+.cig-mini-link-full {
+  color: #50529d;
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.cig-mini-link-full:hover {
+  text-decoration: underline;
+}
+
+.cig-expiring-dropdown {
+  width: 700px;
+}
+
+.cig-expiring-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.cig-expiring-item:hover {
+  background: #f8f9fa;
+}
+
+.cig-expiring-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.cig-expiring-product {
+  font-weight: 600;
+  font-size: 13px;
+  color: #333;
+}
+
+.cig-expiring-urgency {
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.urgency-high { background: #f8d7da; color: #721c24; }
+.urgency-medium { background: #fff3cd; color: #856404; }
+
+.cig-expiring-details {
+  font-size: 12px;
+  color: #666;
+}
+
+.cig-expiring-invoice {
+  color: #50529d;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.cig-expiring-invoice:hover {
+  text-decoration: underline;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .cig-mini-dash-container {
+    flex-wrap: wrap;
+  }
+
+  .cig-mini-dash-left {
+    flex-basis: 100%;
+  }
+
+  .cig-mini-dash-right {
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .cig-mini-dashboard {
+    top: 46px;
+  }
+
+  .cig-mini-dash-container {
+    padding: 8px 12px;
+  }
+
+  .cig-mini-stats-compact {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .cig-mini-dropdown {
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+  
+  .cig-mini-dropdown-filters.compact-mode {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .cig-mini-inputs-group {
+    width: 100%;
+  }
+  
+  .cig-mini-search-input {
+    width: 100%;
+  }
+}
+
+@media print {
+  .cig-mini-dashboard,
+  .no-print {
+    display: none !important;
+  }
+}

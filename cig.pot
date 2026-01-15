@@ -1,0 +1,1145 @@
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Custom WooCommerce Invoice Generator\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-12-12 11:28+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: \n"
+"Language: \n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Loco https://localise.biz/\n"
+"X-Loco-Version: 2.8.0; wp-6.9; php-8.2.29\n"
+"X-Domain: cig"
+
+#: includes/class-cig-ajax-handler.php:247
+#, php-format
+msgid "%s available"
+msgstr ""
+
+#: includes/class-cig-stock-manager.php:398
+#, php-format
+msgid "%s units"
+msgstr ""
+
+#. %s quantity
+#: includes/class-cig-stock-manager.php:349
+#, php-format
+msgid "%s units reserved in invoices"
+msgstr ""
+
+#: templates/single-invoice.php:182
+msgid "(* Partially Paid)"
+msgstr ""
+
+#: includes/class-cig-accountant.php:44
+msgid "Access Denied. You do not have permission to view this page."
+msgstr ""
+
+#: includes/class-cig-accountant.php:30 includes/class-cig-accountant.php:31
+msgid "Accountant"
+msgstr ""
+
+#: includes/class-cig-accountant.php:52
+msgid "Accountant Dashboard"
+msgstr ""
+
+#: includes/class-cig-accountant.php:95
+msgid "Accountant Log (RS Uploaded)"
+msgstr ""
+
+#: includes/class-cig-accountant.php:75 includes/class-cig-accountant.php:107
+#: templates/statistics-dashboard.php:158
+#: templates/statistics-dashboard.php:192
+#: templates/statistics-dashboard.php:227
+#: templates/statistics-dashboard.php:359
+#: templates/partials/mini-dashboard.php:134
+msgid "Actions"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:116
+msgid "Active"
+msgstr ""
+
+#: templates/single-invoice.php:275
+msgid "Active (Stock Affected)"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:265
+#: templates/statistics-dashboard.php:72
+msgid "Active Only"
+msgstr ""
+
+#: templates/statistics-dashboard.php:455
+msgid "Active Reservations"
+msgstr ""
+
+#: includes/class-cig-core.php:215
+msgid "Add at least one product."
+msgstr ""
+
+#: includes/class-cig-invoice.php:54
+msgid "Add New"
+msgstr ""
+
+#: includes/class-cig-invoice.php:55
+msgid "Add New Invoice"
+msgstr ""
+
+#: templates/shortcode-invoice.php:124 templates/edit-invoice.php:118
+msgid "Add Row"
+msgstr ""
+
+#: includes/class-cig-settings.php:62
+msgid "Address"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:108
+msgid "All"
+msgstr ""
+
+#: templates/statistics-dashboard.php:59
+msgid "All Methods"
+msgstr ""
+
+#: templates/statistics-dashboard.php:330
+msgid "All Payment Methods"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:255
+msgid "All Payment Types"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:118
+msgid "All Status"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:264
+#: includes/class-cig-accountant.php:59 templates/statistics-dashboard.php:74
+msgid "All Statuses"
+msgstr ""
+
+#: templates/statistics-dashboard.php:42 templates/statistics-dashboard.php:393
+msgid "All Time"
+msgstr ""
+
+#: templates/statistics-dashboard.php:52 templates/statistics-dashboard.php:404
+msgid "Apply"
+msgstr ""
+
+#: includes/class-cig-accountant.php:73 templates/statistics-dashboard.php:156
+#: templates/statistics-dashboard.php:190
+#: templates/statistics-dashboard.php:225
+#: templates/statistics-dashboard.php:508
+msgid "Author"
+msgstr ""
+
+#: templates/statistics-dashboard.php:22
+msgid "Auto refresh every 5 min"
+msgstr ""
+
+#: templates/products-stock-table.php:76
+msgid "Available"
+msgstr ""
+
+#: templates/statistics-dashboard.php:323
+msgid "Back to Users"
+msgstr ""
+
+#: includes/class-cig-settings.php:90
+msgid "Bank 1 IBAN / Account #"
+msgstr ""
+
+#: includes/class-cig-settings.php:88
+msgid "Bank 1 Logo"
+msgstr ""
+
+#: includes/class-cig-settings.php:89
+msgid "Bank 1 Name"
+msgstr ""
+
+#: includes/class-cig-settings.php:93
+msgid "Bank 2 IBAN / Account #"
+msgstr ""
+
+#: includes/class-cig-settings.php:91
+msgid "Bank 2 Logo"
+msgstr ""
+
+#: includes/class-cig-settings.php:92
+msgid "Bank 2 Name"
+msgstr ""
+
+#: includes/class-cig-settings.php:82
+msgid "Bank Details"
+msgstr ""
+
+#: templates/shortcode-invoice.php:199 templates/single-invoice.php:243
+#: templates/edit-invoice.php:200
+msgid "Bank Details:"
+msgstr ""
+
+#: templates/shortcode-invoice.php:74 templates/single-invoice.php:117
+#: templates/edit-invoice.php:68
+msgid "Brand"
+msgstr ""
+
+#: includes/class-cig-settings.php:138
+msgid "Brand Attribute"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:66
+msgid "Buyer"
+msgstr ""
+
+#: templates/shortcode-invoice.php:57 templates/edit-invoice.php:51
+#: templates/edit-invoice.php:51
+msgid "Buyer Name..."
+msgstr ""
+
+#: templates/shortcode-invoice.php:114 templates/statistics-dashboard.php:289
+#: templates/statistics-dashboard.php:356 templates/edit-invoice.php:108
+msgid "Canceled"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:147
+msgid "Canceled:"
+msgstr ""
+
+#: includes/class-cig-invoice.php:341 templates/shortcode-invoice.php:164
+#: templates/edit-invoice.php:165
+msgid "Cash (Personal Transfer)"
+msgstr ""
+
+#: templates/shortcode-invoice.php:179 templates/single-invoice.php:211
+#: templates/edit-invoice.php:180
+msgid "Cash:"
+msgstr ""
+
+#: includes/class-cig-core.php:217
+msgid "Checking stock..."
+msgstr ""
+
+#: templates/products-stock-table.php:29
+msgid "Clear search"
+msgstr ""
+
+#: templates/statistics-dashboard.php:94 templates/statistics-dashboard.php:105
+msgid "Click to view invoices"
+msgstr ""
+
+#: templates/statistics-dashboard.php:127
+#: templates/statistics-dashboard.php:138
+msgid "Click to view items"
+msgstr ""
+
+#: templates/statistics-dashboard.php:116
+msgid "Click to view unpaid"
+msgstr ""
+
+#: templates/statistics-dashboard.php:222
+msgid "Code"
+msgstr ""
+
+#: templates/shortcode-invoice.php:90 templates/single-invoice.php:157
+#: templates/edit-invoice.php:84
+msgid "Code:"
+msgstr ""
+
+#: templates/single-invoice.php:219
+msgid "Comment:"
+msgstr ""
+
+#: includes/class-cig-settings.php:56
+msgid "Company Details"
+msgstr ""
+
+#: includes/class-cig-settings.php:59
+msgid "Company Logo"
+msgstr ""
+
+#: includes/class-cig-settings.php:60
+msgid "Company Name"
+msgstr ""
+
+#: includes/class-cig-invoice.php:340 templates/shortcode-invoice.php:163
+#: templates/edit-invoice.php:164
+msgid "Company Transfer"
+msgstr ""
+
+#: templates/shortcode-invoice.php:175 templates/single-invoice.php:210
+#: templates/edit-invoice.php:176
+msgid "Company:"
+msgstr ""
+
+#: includes/class-cig-settings.php:157
+msgid "Configure default reservation period for products."
+msgstr ""
+
+#: includes/class-cig-settings.php:83
+msgid "Configure up to two banks."
+msgstr ""
+
+#: includes/class-cig-invoice.php:343 templates/shortcode-invoice.php:166
+#: templates/edit-invoice.php:167
+msgid "Consignment"
+msgstr ""
+
+#: templates/shortcode-invoice.php:191 templates/edit-invoice.php:192
+msgid "Consignment Comment:"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:71
+msgid "Created By"
+msgstr ""
+
+#: includes/class-cig-invoice.php:344 templates/shortcode-invoice.php:167
+#: templates/edit-invoice.php:168
+msgid "Credit Installment"
+msgstr ""
+
+#: templates/statistics-dashboard.php:447
+msgid "Current Inventory"
+msgstr ""
+
+#: templates/statistics-dashboard.php:47 templates/statistics-dashboard.php:399
+msgid "Custom Range:"
+msgstr ""
+
+#. Name of the plugin
+#: custom-woocommerce-invoice-generator.php:214
+msgid "Custom WooCommerce Invoice Generator"
+msgstr ""
+
+#: custom-woocommerce-invoice-generator.php:113
+msgid "Custom WooCommerce Invoice Generator requires PHP 7.4 or higher."
+msgstr ""
+
+#: includes/class-cig-core.php:134
+msgid "Custom WooCommerce Invoice Generator:"
+msgstr ""
+
+#. %d: count
+#: includes/class-cig-core.php:103
+msgid "Custom WooCommerce Invoice Generator: Deactivated %d older version."
+msgid_plural ""
+"Custom WooCommerce Invoice Generator: Deactivated %d older versions."
+msgstr[0] ""
+msgstr[1] ""
+
+#: templates/statistics-dashboard.php:502
+msgid "Customer"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:72 includes/class-cig-accountant.php:71
+#: templates/statistics-dashboard.php:157
+#: templates/statistics-dashboard.php:191
+#: templates/statistics-dashboard.php:352
+#: templates/statistics-dashboard.php:500
+#: templates/partials/mini-dashboard.php:130
+msgid "Date"
+msgstr ""
+
+#: templates/statistics-dashboard.php:226
+msgid "Date/Time"
+msgstr ""
+
+#: includes/class-cig-settings.php:164
+msgid "Default Reservation Period (days)"
+msgstr ""
+
+#: includes/class-cig-settings.php:108
+msgid "Director"
+msgstr ""
+
+#: includes/class-cig-settings.php:111
+msgid "Director Name"
+msgstr ""
+
+#: templates/shortcode-invoice.php:222 templates/single-invoice.php:264
+#: templates/edit-invoice.php:223
+#, php-format
+msgid "Director: %s"
+msgstr ""
+
+#: includes/class-cig-invoice.php:56
+msgid "Edit Invoice"
+msgstr ""
+
+#: templates/single-invoice.php:282
+msgid "Edit Invoice Content"
+msgstr ""
+
+#: includes/class-cig-settings.php:64
+msgid "Email"
+msgstr ""
+
+#: templates/shortcode-invoice.php:60 templates/edit-invoice.php:54
+#: templates/edit-invoice.php:54
+msgid "Enter address..."
+msgstr ""
+
+#: templates/shortcode-invoice.php:192 templates/edit-invoice.php:193
+msgid "Enter consignment details..."
+msgstr ""
+
+#: templates/shortcode-invoice.php:62 templates/edit-invoice.php:56
+#: templates/edit-invoice.php:56
+msgid "Enter email..."
+msgstr ""
+
+#: templates/shortcode-invoice.php:61 templates/edit-invoice.php:55
+#: templates/edit-invoice.php:55
+msgid "Enter phone..."
+msgstr ""
+
+#: includes/class-cig-core.php:327
+msgid "Error"
+msgstr ""
+
+#: includes/class-cig-statistics.php:105
+msgid "Error loading data"
+msgstr ""
+
+#: includes/class-cig-settings.php:146
+msgid "Exclude From Specifications"
+msgstr ""
+
+#: includes/class-cig-stock-manager.php:372
+msgid "EXPIRED"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:161
+msgid "Expiring Reservations"
+msgstr ""
+
+#: includes/class-cig-statistics.php:106
+msgid "Export completed successfully"
+msgstr ""
+
+#: includes/class-cig-statistics.php:107
+msgid "Export failed"
+msgstr ""
+
+#: templates/statistics-dashboard.php:80
+msgid "Export to Excel"
+msgstr ""
+
+#: includes/class-cig-core.php:211
+msgid "Failed to save. Please try again."
+msgstr ""
+
+#: includes/class-cig-core.php:299
+msgid "Failed to submit request."
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:117
+msgid "Fictive"
+msgstr ""
+
+#: templates/single-invoice.php:276
+msgid "Fictive (No Stock Impact)"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:266
+#: templates/statistics-dashboard.php:73
+msgid "Fictive Only"
+msgstr ""
+
+#: templates/statistics-dashboard.php:49
+msgid "From"
+msgstr ""
+
+#: templates/statistics-dashboard.php:439
+msgid "From Active Sales"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:183
+msgid "Front Edit"
+msgstr ""
+
+#: templates/statistics-dashboard.php:28
+msgid "General Overview"
+msgstr ""
+
+#: includes/class-cig-stock-requests.php:169
+msgid "History / Logs"
+msgstr ""
+
+#. Author URI of the plugin
+msgid "https://example.com"
+msgstr ""
+
+#. URI of the plugin
+msgid "https://example.com/invoice-generator"
+msgstr ""
+
+#: templates/shortcode-invoice.php:76 templates/single-invoice.php:119
+#: templates/products-stock-table.php:39 templates/edit-invoice.php:70
+msgid "Image"
+msgstr ""
+
+#: templates/statistics-dashboard.php:445
+msgid "In Stock"
+msgstr ""
+
+#: includes/class-cig-settings.php:370
+msgid "Installation Path:"
+msgstr ""
+
+#: includes/class-cig-statistics.php:136
+msgid "Insufficient permissions"
+msgstr ""
+
+#: includes/class-cig-invoice.php:53
+msgid "Invoice"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:64 includes/class-cig-accountant.php:70
+#: includes/class-cig-accountant.php:104 templates/shortcode-invoice.php:37
+#: templates/single-invoice.php:85 templates/statistics-dashboard.php:153
+#: templates/statistics-dashboard.php:186
+#: templates/statistics-dashboard.php:224
+#: templates/statistics-dashboard.php:351
+#: templates/statistics-dashboard.php:501 templates/edit-invoice.php:31
+#: templates/partials/mini-dashboard.php:129
+msgid "Invoice #"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:83
+msgid "Invoice Generator"
+msgstr ""
+
+#: includes/class-cig-core.php:212
+msgid "Invoice saved successfully."
+msgstr ""
+
+#: includes/class-cig-settings.php:38 includes/class-cig-settings.php:39
+#: includes/class-cig-settings.php:365
+msgid "Invoice Settings"
+msgstr ""
+
+#: includes/class-cig-statistics.php:40 templates/statistics-dashboard.php:15
+msgid "Invoice Statistics"
+msgstr ""
+
+#: templates/single-invoice.php:273 templates/statistics-dashboard.php:70
+msgid "Invoice Status:"
+msgstr ""
+
+#: templates/statistics-dashboard.php:357
+msgid "Invoice Total"
+msgstr ""
+
+#: includes/class-cig-core.php:213
+msgid "Invoice updated successfully."
+msgstr ""
+
+#: includes/class-cig-invoice.php:52 includes/class-cig-invoice.php:62
+#: templates/statistics-dashboard.php:145
+#: templates/statistics-dashboard.php:277
+msgid "Invoices"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:55
+msgid "Invoices:"
+msgstr ""
+
+#: templates/statistics-dashboard.php:41 templates/statistics-dashboard.php:395
+msgid "Last 30 Days"
+msgstr ""
+
+#: templates/statistics-dashboard.php:297
+msgid "Last Invoice"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:60
+msgid "Last:"
+msgstr ""
+
+#: includes/class-cig-accountant.php:98
+msgid "List of invoices currently marked as \"Uploaded to RS\"."
+msgstr ""
+
+#: templates/statistics-dashboard.php:367
+msgid "Loading invoices..."
+msgstr ""
+
+#: templates/products-stock-table.php:89
+msgid "Loading products..."
+msgstr ""
+
+#: templates/statistics-dashboard.php:307
+msgid "Loading users..."
+msgstr ""
+
+#: includes/class-cig-core.php:295 includes/class-cig-core.php:326
+#: includes/class-cig-statistics.php:103 templates/statistics-dashboard.php:166
+#: templates/statistics-dashboard.php:200
+#: templates/statistics-dashboard.php:235
+#: templates/partials/mini-dashboard.php:142
+#: templates/partials/mini-dashboard.php:169
+msgid "Loading..."
+msgstr ""
+
+#: templates/edit-invoice.php:145
+msgid "Mark as Fully Paid"
+msgstr ""
+
+#: includes/class-cig-accountant.php:105
+msgid "Marked By"
+msgstr ""
+
+#: includes/class-cig-invoice.php:342 templates/shortcode-invoice.php:165
+#: templates/edit-invoice.php:166
+msgid "Mixed (Company + Cash)"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:111
+msgid "Month"
+msgstr ""
+
+#: includes/class-cig-core.php:136
+#, php-format
+msgid "Multiple installations detected: %s. Keep only the latest version."
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:77
+#: templates/partials/mini-dashboard.php:102
+msgid "My Invoices"
+msgstr ""
+
+#: templates/shortcode-invoice.php:72 templates/single-invoice.php:115
+#: templates/edit-invoice.php:66
+msgid "N"
+msgstr ""
+
+#: templates/shortcode-invoice.php:73 templates/single-invoice.php:116
+#: templates/statistics-dashboard.php:221 templates/edit-invoice.php:67
+msgid "Name"
+msgstr ""
+
+#: includes/class-cig-invoice.php:57 templates/partials/mini-dashboard.php:93
+msgid "New Invoice"
+msgstr ""
+
+#: includes/class-cig-settings.php:265
+msgid "No attributes found."
+msgstr ""
+
+#: includes/class-cig-statistics.php:104
+msgid "No data available"
+msgstr ""
+
+#: includes/class-cig-invoice.php:60
+msgid "No invoices found"
+msgstr ""
+
+#: includes/class-cig-invoice.php:61
+msgid "No invoices in Trash"
+msgstr ""
+
+#: templates/statistics-dashboard.php:251
+msgid "No payment data available"
+msgstr ""
+
+#: includes/class-cig-core.php:214
+msgid "No permission."
+msgstr ""
+
+#: includes/class-cig-core.php:296
+msgid "No products found."
+msgstr ""
+
+#: includes/class-cig-stock-requests.php:206
+msgid "No records found."
+msgstr ""
+
+#: includes/class-cig-accountant.php:162
+msgid "No uploaded invoices found."
+msgstr ""
+
+#: includes/class-cig-accountant.php:61
+msgid "Not Uploaded"
+msgstr ""
+
+#: includes/class-cig-settings.php:333
+msgid "Number of days a product can be reserved (1-90 days). Default: 30 days"
+msgstr ""
+
+#: includes/class-cig-ajax-handler.php:247
+#, php-format
+msgid "Only %s available"
+msgstr ""
+
+#: includes/class-cig-invoice.php:83
+msgid "Only administrators or shop managers can access the Invoice Generator."
+msgstr ""
+
+#: templates/statistics-dashboard.php:478
+msgid "Other Statuses"
+msgstr ""
+
+#: templates/statistics-dashboard.php:114
+msgid "Outstanding Amount"
+msgstr ""
+
+#: templates/statistics-dashboard.php:178
+msgid "Outstanding Invoices (Partially Paid)"
+msgstr ""
+
+#: templates/statistics-dashboard.php:155
+#: templates/statistics-dashboard.php:188
+msgid "Paid"
+msgstr ""
+
+#: templates/shortcode-invoice.php:150 templates/edit-invoice.php:151
+msgid "Paid Amount:"
+msgstr ""
+
+#: templates/shortcode-invoice.php:145 templates/edit-invoice.php:141
+msgid "Partial Payment (Pay less now)"
+msgstr ""
+
+#: includes/class-cig-ajax-handler.php:284
+#: includes/class-cig-ajax-handler.php:304
+msgid "Partially paid invoices cannot be set to Fictive status."
+msgstr ""
+
+#: templates/single-invoice.php:196
+msgid "Partially Paid:"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:132
+msgid "Payment"
+msgstr ""
+
+#: templates/statistics-dashboard.php:358
+msgid "Payment Method"
+msgstr ""
+
+#: templates/statistics-dashboard.php:57
+msgid "Payment Method:"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:68
+msgid "Payment Type"
+msgstr ""
+
+#: templates/shortcode-invoice.php:161 templates/single-invoice.php:203
+#: templates/edit-invoice.php:162
+msgid "Payment Type:"
+msgstr ""
+
+#: includes/class-cig-stock-requests.php:166
+msgid "Pending Requests"
+msgstr ""
+
+#: templates/statistics-dashboard.php:258
+msgid "Performance by User"
+msgstr ""
+
+#: includes/class-cig-settings.php:63
+msgid "Phone"
+msgstr ""
+
+#: templates/statistics-dashboard.php:220
+msgid "Photo"
+msgstr ""
+
+#: includes/class-cig-settings.php:368
+msgid "Plugin Version:"
+msgstr ""
+
+#: templates/shortcode-invoice.php:78 templates/single-invoice.php:121
+#: templates/products-stock-table.php:55 templates/edit-invoice.php:72
+msgid "Price"
+msgstr ""
+
+#: templates/shortcode-invoice.php:135 templates/single-invoice.php:186
+#: templates/edit-invoice.php:129
+msgid "Price includes VAT"
+msgstr ""
+
+#: templates/shortcode-invoice.php:236 templates/single-invoice.php:283
+#: templates/edit-invoice.php:237
+msgid "Print Invoice"
+msgstr ""
+
+#: includes/class-cig-stock-manager.php:293
+#, php-format
+msgid "Product \"%s\" (SKU: %s): Requested %s, but only %s available"
+msgstr ""
+
+#: includes/class-cig-settings.php:129
+msgid "Product Attribute Mapping"
+msgstr ""
+
+#: templates/statistics-dashboard.php:29
+msgid "Product Insight"
+msgstr ""
+
+#: templates/statistics-dashboard.php:494
+msgid "Product Invoices History"
+msgstr ""
+
+#: templates/products-stock-table.php:41
+msgid "Product Title"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:69
+#: templates/statistics-dashboard.php:212
+#: templates/partials/mini-dashboard.php:88
+msgid "Products"
+msgstr ""
+
+#: templates/statistics-dashboard.php:136
+msgid "Products Reserved"
+msgstr ""
+
+#: templates/statistics-dashboard.php:125
+msgid "Products Sold"
+msgstr ""
+
+#: templates/products-stock-table.php:20
+msgid "Products Stock Overview"
+msgstr ""
+
+#. Description of the plugin
+msgid ""
+"Professional invoice generator with advanced stock reservation, real-time "
+"validation, and comprehensive analytics."
+msgstr ""
+
+#: templates/shortcode-invoice.php:77 templates/single-invoice.php:120
+#: templates/edit-invoice.php:71
+msgid "Qt."
+msgstr ""
+
+#: templates/statistics-dashboard.php:505
+msgid "Qty"
+msgstr ""
+
+#: templates/statistics-dashboard.php:223
+msgid "Quantity"
+msgstr ""
+
+#: includes/class-cig-core.php:216
+msgid "Quantity exceeds available stock!"
+msgstr ""
+
+#: templates/statistics-dashboard.php:36
+msgid "Quick Filters:"
+msgstr ""
+
+#: templates/statistics-dashboard.php:18
+msgid "Refresh"
+msgstr ""
+
+#: templates/statistics-dashboard.php:17
+msgid "Refresh statistics"
+msgstr ""
+
+#: templates/statistics-dashboard.php:189
+msgid "Remaining"
+msgstr ""
+
+#: templates/shortcode-invoice.php:154 templates/edit-invoice.php:155
+msgid "Remaining Amount:"
+msgstr ""
+
+#: templates/single-invoice.php:198
+msgid "Remaining:"
+msgstr ""
+
+#: includes/class-cig-core.php:298
+msgid "Request submitted successfully. Waiting for approval."
+msgstr ""
+
+#: custom-woocommerce-invoice-generator.php:216
+msgid "requires WooCommerce to be installed and active."
+msgstr ""
+
+#: includes/class-cig-settings.php:155
+msgid "Reservation Settings"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:199 templates/shortcode-invoice.php:113
+#: templates/products-stock-table.php:69 templates/statistics-dashboard.php:285
+#: templates/statistics-dashboard.php:355
+#: templates/statistics-dashboard.php:453 templates/edit-invoice.php:107
+msgid "Reserved"
+msgstr ""
+
+#: includes/class-cig-stock-manager.php:346
+msgid "Reserved Stock"
+msgstr ""
+
+#: includes/class-cig-stock-manager.php:397
+#: includes/class-cig-admin-columns.php:144
+#: templates/partials/mini-dashboard.php:65
+msgid "Reserved:"
+msgstr ""
+
+#: templates/statistics-dashboard.php:293
+msgid "Revenue"
+msgstr ""
+
+#: templates/statistics-dashboard.php:247
+#: templates/statistics-dashboard.php:464
+msgid "Revenue by Payment Method"
+msgstr ""
+
+#: includes/class-cig-accountant.php:74
+msgid "RS Uploaded"
+msgstr ""
+
+#: templates/single-invoice.php:229
+msgid "RS.ge Status:"
+msgstr ""
+
+#. Author of the plugin
+msgid "Samsiani"
+msgstr ""
+
+#: templates/shortcode-invoice.php:231 templates/edit-invoice.php:232
+msgid "Save as Fictive (No Stock Impact)"
+msgstr ""
+
+#: templates/shortcode-invoice.php:235 templates/edit-invoice.php:236
+msgid "Save Invoice"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:121
+msgid "Search #..."
+msgstr ""
+
+#: templates/statistics-dashboard.php:328
+msgid "Search by invoice number..."
+msgstr ""
+
+#: includes/class-cig-core.php:297 templates/products-stock-table.php:26
+msgid "Search by name or SKU..."
+msgstr ""
+
+#: includes/class-cig-accountant.php:55
+msgid "Search Invoice #..."
+msgstr ""
+
+#: includes/class-cig-invoice.php:59
+msgid "Search Invoices"
+msgstr ""
+
+#: templates/shortcode-invoice.php:88 templates/edit-invoice.php:82
+msgid "Search SKU or Name"
+msgstr ""
+
+#: templates/statistics-dashboard.php:260
+msgid "Search users..."
+msgstr ""
+
+#: includes/class-cig-statistics.php:143
+msgid "Security check failed"
+msgstr ""
+
+#: includes/class-cig-settings.php:131
+msgid "Select Brand attribute and exclusion attributes for Specifications."
+msgstr ""
+
+#: includes/class-cig-settings.php:112
+msgid "Signature Image (PNG)"
+msgstr ""
+
+#: templates/products-stock-table.php:48
+msgid "SKU"
+msgstr ""
+
+#: templates/shortcode-invoice.php:112 templates/statistics-dashboard.php:281
+#: templates/statistics-dashboard.php:354 templates/edit-invoice.php:106
+msgid "Sold"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:141
+msgid "Sold:"
+msgstr ""
+
+#: templates/shortcode-invoice.php:75 templates/single-invoice.php:118
+#: templates/edit-invoice.php:69
+msgid "Specifications"
+msgstr ""
+
+#: templates/shortcode-invoice.php:184 templates/edit-invoice.php:185
+msgid "Split Total:"
+msgstr ""
+
+#: includes/class-cig-statistics.php:41
+msgid "Statistics"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:70 templates/shortcode-invoice.php:80
+#: templates/single-invoice.php:123 templates/statistics-dashboard.php:155
+#: templates/statistics-dashboard.php:504 templates/edit-invoice.php:74
+#: templates/partials/mini-dashboard.php:133
+msgid "Status"
+msgstr ""
+
+#: templates/products-stock-table.php:62
+msgid "Stock"
+msgstr ""
+
+#: includes/class-cig-stock-requests.php:161
+msgid "Stock & Price Update Requests"
+msgstr ""
+
+#: includes/class-cig-stock-requests.php:47
+#: includes/class-cig-stock-requests.php:48
+msgid "Stock Requests"
+msgstr ""
+
+#: includes/class-cig-settings.php:61
+msgid "Tax ID (s/k)"
+msgstr ""
+
+#: templates/shortcode-invoice.php:58 templates/edit-invoice.php:52
+#: templates/edit-invoice.php:52
+msgid "Tax ID..."
+msgstr ""
+
+#: templates/statistics-dashboard.php:40 templates/statistics-dashboard.php:394
+msgid "This Month"
+msgstr ""
+
+#: templates/statistics-dashboard.php:39
+msgid "This Week"
+msgstr ""
+
+#: templates/statistics-dashboard.php:391
+msgid "Time Period:"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:63
+msgid "Title"
+msgstr ""
+
+#: templates/statistics-dashboard.php:51
+msgid "To"
+msgstr ""
+
+#: templates/statistics-dashboard.php:38
+#: templates/partials/mini-dashboard.php:109
+msgid "Today"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:67 includes/class-cig-accountant.php:72
+#: includes/class-cig-accountant.php:106 templates/shortcode-invoice.php:79
+#: templates/shortcode-invoice.php:131 templates/single-invoice.php:122
+#: templates/single-invoice.php:176 templates/statistics-dashboard.php:154
+#: templates/statistics-dashboard.php:187
+#: templates/statistics-dashboard.php:507 templates/edit-invoice.php:73
+#: templates/edit-invoice.php:125 templates/partials/mini-dashboard.php:131
+msgid "Total"
+msgstr ""
+
+#: templates/statistics-dashboard.php:92
+msgid "Total Invoices"
+msgstr ""
+
+#: templates/statistics-dashboard.php:353
+msgid "Total Products"
+msgstr ""
+
+#: templates/statistics-dashboard.php:437
+msgid "Total Revenue"
+msgstr ""
+
+#: templates/statistics-dashboard.php:103
+msgid "Total Revenue (Received)"
+msgstr ""
+
+#: templates/statistics-dashboard.php:429
+msgid "Total Sold"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:52
+#: includes/class-cig-admin-columns.php:58
+#: includes/class-cig-admin-columns.php:65
+#: templates/statistics-dashboard.php:503
+#: templates/partials/mini-dashboard.php:130
+msgid "Type"
+msgstr ""
+
+#: templates/statistics-dashboard.php:384
+msgid "Type product name or code..."
+msgstr ""
+
+#: templates/statistics-dashboard.php:506
+msgid "Unit Price"
+msgstr ""
+
+#: templates/statistics-dashboard.php:431
+msgid "Units (Active Invoices)"
+msgstr ""
+
+#: templates/single-invoice.php:278
+msgid "Update Status"
+msgstr ""
+
+#: includes/class-cig-settings.php:241
+msgid "Upload"
+msgstr ""
+
+#: includes/class-cig-accountant.php:103
+msgid "Upload Date"
+msgstr ""
+
+#: templates/single-invoice.php:234
+msgid "Uploaded"
+msgstr ""
+
+#: includes/class-cig-accountant.php:60
+msgid "Uploaded to RS"
+msgstr ""
+
+#: includes/class-cig-settings.php:317
+msgid "Use Ctrl/Cmd to multi-select."
+msgstr ""
+
+#: templates/statistics-dashboard.php:273
+msgid "User"
+msgstr ""
+
+#: templates/statistics-dashboard.php:325
+msgid "User Invoices"
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:177
+msgid "View"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:153
+msgid "View Full Statistics →"
+msgstr ""
+
+#: includes/class-cig-invoice.php:58
+msgid "View Invoice"
+msgstr ""
+
+#: includes/class-cig-settings.php:65
+msgid "Website"
+msgstr ""
+
+#: templates/partials/mini-dashboard.php:110
+msgid "Week"
+msgstr ""
+
+#: includes/class-cig-security.php:38
+msgid "You do not have permission to perform this action."
+msgstr ""
+
+#: includes/class-cig-admin-columns.php:231
+msgid "⚠ Expiring soon"
+msgstr ""

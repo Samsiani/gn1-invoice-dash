@@ -1,0 +1,403 @@
+/* ==========================================================================
+   Products Stock Table Styles - Enhanced UI/UX
+   Version: 3.6.0 (Cart & Floating Bar Added)
+   ========================================================================== */
+
+.cig-products-stock-table-wrapper {
+  max-width: 1400px;
+  margin: 30px auto;
+  padding: 0;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Header Section */
+.cig-stock-header {
+  padding: 25px 30px;
+  background: linear-gradient(135deg, #50529d 0%, #3d3e7a 100%);
+  border-bottom: 3px solid #2d2e5f;
+}
+
+.cig-stock-title {
+  color: #fff;
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 20px 0;
+  font-family: 'FiraGO', Arial, sans-serif;
+}
+
+/* Search Bar */
+.cig-stock-search-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  max-width: 500px;
+}
+
+.cig-stock-search-input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  font-size: 15px;
+  font-family: 'FiraGO', Arial, sans-serif;
+  background: rgba(255, 255, 255, 0.95);
+  transition: all 0.3s ease;
+}
+
+.cig-stock-search-input:focus {
+  outline: none;
+  border-color: #fff;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+}
+
+.cig-stock-clear-btn {
+  padding: 12px 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 50px;
+}
+
+.cig-stock-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: #fff;
+}
+
+/* Table Container */
+.cig-stock-table-container {
+  overflow-x: auto;
+  padding: 0;
+  min-height: 400px; /* Prevent layout jump */
+}
+
+/* Table */
+.cig-stock-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  background: #fff;
+}
+
+.cig-stock-table thead {
+  background: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.cig-stock-table th {
+  padding: 14px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #495057;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #dee2e6;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.cig-stock-table th.sortable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cig-stock-table th.sortable:hover {
+  background: #e9ecef;
+  color: #50529d;
+}
+
+.cig-stock-table th.sortable.active-sort {
+  background: #e7e8f5;
+  color: #50529d;
+}
+
+/* Sort Arrows */
+.sort-arrows {
+  display: inline-flex;
+  flex-direction: column;
+  margin-left: 6px;
+  line-height: 1;
+  vertical-align: middle;
+  opacity: 0.4;
+}
+
+.sortable:hover .sort-arrows { opacity: 0.7; }
+.sortable.active-sort .sort-arrows { opacity: 1; }
+
+.arrow-up, .arrow-down {
+  font-size: 8px;
+  display: block;
+  height: 6px;
+  color: #6c757d;
+}
+
+.sortable.active-sort[data-order="asc"] .arrow-up { color: #50529d; font-weight: bold; }
+.sortable.active-sort[data-order="desc"] .arrow-down { color: #50529d; font-weight: bold; }
+.sort-label { display: inline-block; }
+
+/* Column Widths */
+.cig-stock-table th.col-image { width: 70px; text-align: center; }
+.cig-stock-table th.col-sku { width: 140px; }
+.cig-stock-table th.col-price { width: 180px; text-align: right; } 
+.cig-stock-table th.col-stock { width: 180px; text-align: center; }
+.cig-stock-table th.col-reserved,
+.cig-stock-table th.col-available { width: 110px; text-align: center; }
+.cig-stock-table th.col-actions { width: 60px; text-align: center; } /* New Column */
+
+/* Table Body */
+.cig-stock-table tbody tr { border-bottom: 1px solid #e9ecef; transition: background-color 0.15s ease; }
+.cig-stock-table tbody tr:hover { background-color: #f8f9fa; }
+.cig-stock-table tbody tr:nth-child(even) { background-color: #fafbfc; }
+.cig-stock-table tbody tr:nth-child(even):hover { background-color: #f1f3f5; }
+.cig-stock-table td { padding: 10px 12px; color: #212529; vertical-align: middle; }
+.cig-stock-table td.col-image { text-align: center; padding: 8px; }
+.cig-stock-table td.col-price { text-align: right; font-weight: 500; }
+.cig-stock-table td.col-stock,
+.cig-stock-table td.col-reserved,
+.cig-stock-table td.col-available { text-align: center; font-weight: 600; }
+.cig-stock-table td.col-actions { text-align: center; }
+
+/* Product Image */
+.cig-product-thumb { width: 50px; height: 50px; object-fit: cover; border: 2px solid #e9ecef; border-radius: 6px; cursor: pointer; transition: all 0.2s ease; }
+.cig-product-thumb:hover { transform: scale(1.15); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); border-color: #50529d; z-index: 5; }
+.cig-no-image { width: 50px; height: 50px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #adb5bd; text-align: center; line-height: 1.2; }
+
+/* Stock Indicators */
+.stock-value { padding: 4px 8px; border-radius: 4px; font-weight: 600; display: inline-block; font-size: 12px; }
+.stock-value.in-stock { color: #155724; background: #d4edda; }
+.stock-value.low-stock { color: #856404; background: #fff3cd; }
+.stock-value.out-of-stock { color: #721c24; background: #f8d7da; }
+
+.reserved-value { color: #856404; background: #fff3cd; padding: 5px 10px; border-radius: 4px; font-weight: 700; display: inline-block; min-width: 50px; }
+.available-value { color: #155724; background: #d4edda; padding: 5px 10px; border-radius: 4px; font-weight: 700; display: inline-block; min-width: 50px; }
+.available-value.out-of-stock { color: #721c24; background: #f8d7da; }
+
+/* --- CART & EDITING STYLES (NEW) --- */
+
+.cig-cell-container { position: relative; min-height: 34px; display: flex; align-items: center; justify-content: flex-end; }
+.col-stock .cig-cell-container { justify-content: center; }
+
+/* View Mode */
+.cig-view-wrap { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background 0.2s; width: 100%; justify-content: flex-end; }
+.col-stock .cig-view-wrap { justify-content: center; }
+.cig-view-wrap:hover { background-color: rgba(80, 82, 157, 0.08); }
+
+.cig-edit-icon { opacity: 0; color: #50529d; font-size: 14px; transition: all 0.2s ease; transform: scale(0.8); }
+.cig-view-wrap:hover .cig-edit-icon { opacity: 1; transform: scale(1); }
+
+/* Edit Mode Wrapper */
+.cig-edit-wrap { display: none; align-items: center; gap: 0; width: 100%; justify-content: flex-end; }
+.col-stock .cig-edit-wrap { justify-content: center; }
+
+/* When Active */
+.cig-cell-editing .cig-view-wrap { display: none; }
+.cig-cell-editing .cig-edit-wrap { display: flex; }
+
+/* Input Style */
+.cig-edit-input { width: 100px; padding: 6px 10px; border: 1px solid #ced4da; border-right: none; border-radius: 4px 0 0 4px; font-size: 14px; text-align: right; height: 34px; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
+.cig-edit-input:focus { border-color: #50529d; z-index: 2; }
+
+/* Action Buttons */
+.cig-edit-actions { display: flex; }
+.cig-action-btn { padding: 0; width: 30px; height: 34px; border: 1px solid #ced4da; background: #f8f9fa; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; margin-left: -1px; }
+.cig-save-btn { color: #28a745; background: #e8f5e9; }
+.cig-save-btn:hover { background-color: #28a745; color: #fff; border-color: #28a745; z-index: 3; }
+.cig-cancel-btn { color: #dc3545; background: #fff5f5; border-radius: 0 4px 4px 0; }
+.cig-cancel-btn:hover { background-color: #dc3545; color: #fff; border-color: #dc3545; z-index: 3; }
+.cig-btn-icon { font-size: 16px; font-weight: bold; line-height: 1; }
+
+/* States */
+.cig-edit-input.cig-input-pending { border-color: #ffc107; background-color: #fffdf0; }
+.cig-edit-input.cig-input-saving { opacity: 0.7; cursor: wait; background-color: #e9ecef; }
+
+/* Pending Value Display */
+.cig-pending-val {
+    font-size: 12px; color: #e0a800; margin-left: 6px; font-weight: 500;
+    display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
+}
+.cig-pending-val .dashicons { font-size: 14px; width: 14px; height: 14px; line-height: 1; }
+
+/* Toast Notification */
+.cig-toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-100px); background: #333; color: #fff; padding: 12px 24px; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 10000; opacity: 0; transition: all 0.3s ease; font-size: 14px; text-align: center; min-width: 250px; }
+.cig-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+.cig-toast-success { background-color: #28a745; }
+.cig-toast-error { background-color: #dc3545; }
+
+/* Loading & No Results */
+.loading-row td { padding: 60px 30px; text-align: center; }
+.cig-loading-spinner { display: flex; flex-direction: column; align-items: center; gap: 15px; }
+.spinner { border: 4px solid #f3f3f3; border-top: 4px solid #50529d; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.cig-loading-spinner p { margin: 0; color: #6c757d; font-size: 14px; }
+.no-results-row td { text-align: center; padding: 60px 30px; color: #6c757d; font-size: 15px; }
+
+/* Footer */
+.cig-stock-footer { padding: 20px 30px; background: #f8f9fa; border-top: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+.cig-stock-info { font-size: 14px; color: #495057; font-weight: 500; }
+.cig-stock-pagination { display: flex; align-items: center; gap: 6px; width: 100%; justify-content: center; flex-wrap: wrap; }
+.cig-page-btn { padding: 8px 14px; border: 1px solid #dee2e6; background: white; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; color: #495057; transition: all 0.2s ease; min-width: 38px; text-align: center; }
+.cig-page-btn:hover:not(:disabled) { background-color: #e9ecef; border-color: #50529d; color: #50529d; }
+.cig-page-btn.active { background-color: #50529d; color: white; border-color: #50529d; font-weight: 600; }
+.cig-page-btn:disabled { opacity: 0.4; cursor: not-allowed; background: #f8f9fa; }
+.cig-page-info { font-size: 14px; color: #6c757d; padding: 0 6px; }
+
+/* Lightbox */
+.cig-lightbox { display: none; position: fixed; z-index: 99999; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0, 0, 0, 0.92); animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.cig-lightbox-content { margin: auto; display: block; max-width: 90%; max-height: 85%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); animation: zoomIn 0.3s ease; border-radius: 8px; }
+@keyframes zoomIn { from { transform: translate(-50%, -50%) scale(0.7); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+.cig-lightbox-close { position: absolute; top: 25px; right: 35px; color: #f1f1f1; font-size: 45px; font-weight: bold; cursor: pointer; transition: color 0.2s ease; z-index: 100000; line-height: 1; width: 45px; height: 45px; text-align: center; }
+.cig-lightbox-close:hover, .cig-lightbox-close:focus { color: #ff6b6b; }
+.cig-lightbox-caption { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: #f1f1f1; background: rgba(0, 0, 0, 0.7); padding: 12px 24px; border-radius: 6px; font-size: 16px; max-width: 80%; text-align: center; }
+
+/* --- CART ACTION BUTTONS --- */
+
+/* Table Add Button */
+.cig-add-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid #28a745;
+  background: #fff;
+  color: #28a745;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+.cig-add-btn:hover {
+  background: #28a745;
+  color: #fff;
+  transform: scale(1.1);
+}
+.cig-add-btn.added {
+  background: #28a745;
+  color: #fff;
+  border-color: #28a745;
+}
+.cig-add-btn .dashicons {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+/* Single Product Page Button */
+.cig-single-add-btn {
+  width: auto;
+  height: auto;
+  min-height: 40px; /* Match typical WC button */
+  min-width: 40px;
+  border-radius: 4px;
+  border: 1px solid #50529d;
+  background: #fff;
+  color: #50529d;
+  margin-left: 10px;
+}
+.cig-single-add-btn:hover {
+  background: #50529d;
+  color: #fff;
+}
+.cig-single-add-btn.added {
+  background: #28a745;
+  border-color: #28a745;
+  color: #fff;
+}
+
+/* Floating Cart Bar */
+.cig-stock-cart-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  padding: 12px 25px;
+  border-radius: 50px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  z-index: 9999;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translate(-50%, 20px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+.cig-cart-info {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cig-cart-info .dashicons {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  color: #ffc107;
+}
+
+#cig-cart-count {
+  font-weight: bold;
+  font-size: 16px;
+  color: #ffc107;
+}
+
+.cig-create-invoice-btn {
+  background: #50529d;
+  color: #fff;
+  text-decoration: none;
+  padding: 8px 18px;
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.2s ease;
+}
+
+.cig-create-invoice-btn:hover {
+  background: #3d3e7a;
+  color: #fff;
+}
+
+/* Responsive */
+@media (max-width: 1200px) { .cig-products-stock-table-wrapper { margin: 20px 10px; } }
+@media (max-width: 768px) { 
+  .cig-products-stock-table-wrapper { margin: 15px 5px; border-radius: 6px; } 
+  .cig-stock-header { padding: 20px 15px; } 
+  .cig-stock-title { font-size: 20px; margin-bottom: 15px; } 
+  .cig-stock-search-bar { max-width: 100%; } 
+  .cig-stock-search-input { font-size: 14px; padding: 10px 12px; } 
+  .cig-stock-table { font-size: 12px; } 
+  .cig-stock-table th, .cig-stock-table td { padding: 8px 6px; } 
+  .cig-product-thumb, .cig-no-image { width: 40px; height: 40px; } 
+  .cig-stock-footer { flex-direction: column; gap: 12px; padding: 15px; } 
+  .cig-stock-pagination { width: 100%; justify-content: center; flex-wrap: wrap; } 
+  .cig-page-btn { padding: 6px 10px; font-size: 13px; min-width: 34px; } 
+  .sort-label { font-size: 11px; } 
+  .sort-arrows { margin-left: 3px; } 
+  .arrow-up, .arrow-down { font-size: 7px; height: 5px; } 
+  
+  /* Mobile Cart Bar */
+  .cig-stock-cart-bar { width: 90%; justify-content: space-between; border-radius: 10px; bottom: 10px; padding: 10px 15px; }
+}
