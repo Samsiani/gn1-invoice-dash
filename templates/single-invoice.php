@@ -116,14 +116,9 @@ $payment_methods_map = [
         </h2>
         
         <div style="font-size:11px; color:#666; margin-top:5px;">
-            <span style="font-weight:500;">
-                <?php esc_html_e('შეიქმნა:', 'cig'); ?> <?php echo esc_html($created_date); ?>
+            <span style="font-weight:bold;">
+                <?php esc_html_e('თარიღი:', 'cig'); ?> <?php echo esc_html($created_date); ?>
             </span>
-            <?php if ($is_updated): ?>
-                <span style="margin-left:8px; color:#888;">
-                    (<?php esc_html_e('განახლდა:', 'cig'); ?> <?php echo esc_html($modified_date); ?>)
-                </span>
-            <?php endif; ?>
         </div>
     </div>
   </div>

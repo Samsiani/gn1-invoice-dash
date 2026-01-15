@@ -3,7 +3,7 @@
  * Plugin Name: Custom WooCommerce Invoice Generator
  * Plugin URI: https://example.com/invoice-generator
  * Description: Professional invoice generator with advanced stock reservation, real-time validation, and comprehensive analytics.
- * Version: 3.6.0
+ * Version: 4.0.0
  * Author: Samsiani
  * Author URI: https://example.com
  * Text Domain: cig
@@ -16,7 +16,7 @@
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  *
  * @package CIG
- * @since 3.5.0
+ * @since 4.0.0
  */
 
 if (!defined('ABSPATH')) {
@@ -39,7 +39,7 @@ add_action('before_woocommerce_init', function() {
 /**
  * Plugin constants
  */
-define('CIG_VERSION', '3.6.0'); // Version bumped slightly for the new feature
+define('CIG_VERSION', '4.0.0');
 define('CIG_PLUGIN_FILE', __FILE__);
 define('CIG_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CIG_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -84,6 +84,9 @@ final class CIG_Invoice_Generator {
     
     // New Component
     public $user_restrictions;
+    
+    // Services (4.0.0)
+    public $invoice_service;
 
     /**
      * Get singleton instance
@@ -142,6 +145,12 @@ final class CIG_Invoice_Generator {
         require_once CIG_INCLUDES_DIR . 'class-cig-invoice.php';
         require_once CIG_INCLUDES_DIR . 'class-cig-stock-manager.php';
         
+        // Database & Services (4.0.0)
+        require_once CIG_INCLUDES_DIR . 'database/class-cig-database.php';
+        require_once CIG_INCLUDES_DIR . 'dto/class-cig-invoice-item-dto.php';
+        require_once CIG_INCLUDES_DIR . 'services/class-cig-invoice-service.php';
+        require_once CIG_INCLUDES_DIR . 'migration/class-cig-migrator.php';
+        
         // AJAX Handlers
         require_once CIG_INCLUDES_DIR . 'ajax/class-cig-ajax-invoices.php';
         require_once CIG_INCLUDES_DIR . 'ajax/class-cig-ajax-products.php';
@@ -185,6 +194,9 @@ final class CIG_Invoice_Generator {
         $this->stock     = new CIG_Stock_Manager($this->logger, $this->cache, $this->validator);
         $this->invoice   = new CIG_Invoice($this->stock, $this->validator, $this->logger);
         
+        // Services (4.0.0)
+        $this->invoice_service = new CIG_Invoice_Service();
+        
         // Initialize AJAX Handlers
         new CIG_Ajax_Invoices($this->invoice, $this->stock, $this->validator, $this->security, $this->cache);
         new CIG_Ajax_Products($this->stock, $this->security);
@@ -211,6 +223,10 @@ final class CIG_Invoice_Generator {
         if (!wp_next_scheduled('cig_check_expired_reservations')) {
             wp_schedule_event(time(), 'hourly', 'cig_check_expired_reservations');
         }
+        
+        // Create custom tables (4.0.0)
+        CIG_Database::create_tables();
+        
         update_option('cig_version', CIG_VERSION, false);
         flush_rewrite_rules();
     }

@@ -36,72 +36,71 @@ class CIG_Ajax_Statistics {
     }
 
     public function get_statistics_summary() {
-    $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
-    $args = ['post_type' => 'invoice', 'post_status' => 'publish', 'posts_per_page' => -1, 'fields' => 'ids'];
-    
-    if (!empty($_POST['date_from']) && !empty($_POST['date_to'])) {
-        $args['date_query'] = [['after' => $_POST['date_from'].' 00:00:00', 'before' => $_POST['date_to'].' 23:59:59', 'inclusive' => true]];
-    }
-    
-    $mq = $this->get_status_meta_query(sanitize_text_field($_POST['status'] ?? 'standard'));
-    if ($mq) $args['meta_query'] = $mq;
-
-    $query = new WP_Query($args);
-    $ids = $query->posts;
-
-    // დავამატეთ 'total_reserved_invoices' მასივში
-    $stats = [
-        'total_invoices' => count($ids),
-        'total_revenue' => 0.0,
-        'total_paid' => 0.0,
-        'total_outstanding' => 0.0,
-        'total_company_transfer' => 0.0,
-        'total_cash' => 0.0,
-        'total_consignment' => 0.0,
-        'total_credit' => 0.0,
-        'total_other' => 0.0,
-        'total_sold' => 0,
-        'total_reserved' => 0,
-        'total_reserved_invoices' => 0 // <--- ახალი ველი
-    ];
-
-    foreach ($ids as $id) {
-        $stats['total_revenue'] += (float)get_post_meta($id, '_cig_invoice_total', true);
-        $stats['total_paid'] += (float)get_post_meta($id, '_cig_payment_paid_amount', true);
+        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
+        global $wpdb;
         
-        $history = get_post_meta($id, '_cig_payment_history', true);
-        if (is_array($history)) {
-            foreach ($history as $pay) {
-                $m = $pay['method'] ?? 'other';
-                if (isset($stats['total_'.$m])) $stats['total_'.$m] += (float)$pay['amount'];
-                else $stats['total_other'] += (float)$pay['amount'];
-            }
-        }
+        $date_from = sanitize_text_field($_POST['date_from'] ?? '');
+        $date_to   = sanitize_text_field($_POST['date_to'] ?? '');
+        $status    = sanitize_text_field($_POST['status'] ?? 'standard');
 
-        $items = get_post_meta($id, '_cig_items', true) ?: [];
-        $has_reserved_item = false; // დროებითი ფლაგი ინვოისისთვის
+        $table_payments = $wpdb->prefix . 'cig_payments';
+        $table_invoices = $wpdb->prefix . 'cig_invoices';
+        $table_items    = $wpdb->prefix . 'cig_invoice_items';
 
-        foreach ($items as $it) {
-            $q = floatval($it['qty'] ?? 0);
-            $st = strtolower($it['status'] ?? 'sold');
-            
-            if ($st === 'sold') {
-                $stats['total_sold'] += $q;
-            } elseif ($st === 'reserved') {
-                $stats['total_reserved'] += $q;
-                $has_reserved_item = true; // ვიპოვეთ დარეზერვებული პროდუქტი
-            }
-        }
+        // 1. Payment Filters (For Money)
+        $where_pay = "WHERE 1=1"; $params_pay = [];
+        if ($date_from) { $where_pay .= " AND p.date >= %s"; $params_pay[] = $date_from; }
+        if ($date_to)   { $where_pay .= " AND p.date <= %s"; $params_pay[] = $date_to; }
+        $where_pay .= ($status === 'fictive') ? " AND i.type = 'fictive'" : " AND (i.type = 'standard' OR i.type IS NULL)";
 
-        // თუ ინვოისში ერთი პროდუქტი მაინც იყო დარეზერვებული, ვზრდით ინვოისების მრიცხველს
-        if ($has_reserved_item) {
-            $stats['total_reserved_invoices']++;
+        // 2. Invoice Filters (For Counts/Reserved)
+        $where_inv = "WHERE 1=1"; $params_inv = [];
+        if ($date_from) { 
+            $where_inv .= " AND COALESCE(i.activation_date, i.created_at) >= %s"; 
+            $params_inv[] = $date_from . ' 00:00:00'; 
         }
+        if ($date_to) { 
+            $where_inv .= " AND COALESCE(i.activation_date, i.created_at) <= %s"; 
+            $params_inv[] = $date_to . ' 23:59:59'; 
+        }
+        $where_inv .= ($status === 'fictive') ? " AND i.type = 'fictive'" : " AND i.type = 'standard'";
+
+        // QUERY 1: Financials
+        $sql_money = "SELECT SUM(p.amount) as total_paid,
+                    SUM(CASE WHEN p.payment_method = 'company_transfer' THEN p.amount ELSE 0 END) as total_company_transfer,
+                    SUM(CASE WHEN p.payment_method = 'cash' THEN p.amount ELSE 0 END) as total_cash,
+                    SUM(CASE WHEN p.payment_method = 'consignment' THEN p.amount ELSE 0 END) as total_consignment,
+                    SUM(CASE WHEN p.payment_method = 'credit' THEN p.amount ELSE 0 END) as total_credit,
+                    SUM(CASE WHEN p.payment_method = 'other' OR p.payment_method = '' OR p.payment_method IS NULL THEN p.amount ELSE 0 END) as total_other,
+                    COUNT(DISTINCT p.invoice_id) as paid_invoices_count
+                FROM $table_payments p LEFT JOIN $table_invoices i ON p.invoice_id = i.id $where_pay";
+        $money = $wpdb->get_row((!empty($params_pay)) ? $wpdb->prepare($sql_money, $params_pay) : $sql_money, ARRAY_A);
+
+        // QUERY 2: Quantities
+        $sql_items = "SELECT COUNT(DISTINCT i.id) as total_invoices_count,
+                        SUM(CASE WHEN it.status = 'sold' THEN it.qty ELSE 0 END) as total_sold,
+                        SUM(CASE WHEN it.status = 'reserved' THEN it.qty ELSE 0 END) as total_reserved,
+                        COUNT(DISTINCT CASE WHEN it.status = 'reserved' THEN it.invoice_id END) as reserved_invoices_count
+                      FROM $table_invoices i LEFT JOIN $table_items it ON i.id = it.invoice_id $where_inv";
+        $items = $wpdb->get_row((!empty($params_inv)) ? $wpdb->prepare($sql_items, $params_inv) : $sql_items, ARRAY_A);
+
+        $total_outstanding = $wpdb->get_var("SELECT SUM(balance) FROM $table_invoices WHERE type = 'standard' AND balance > 0.01");
+
+        wp_send_json_success([
+            'total_invoices' => (int)($items['total_invoices_count'] ?? 0),
+            'total_revenue' => (float)($money['total_paid'] ?? 0),
+            'total_paid' => (float)($money['total_paid'] ?? 0),
+            'total_company_transfer' => (float)($money['total_company_transfer'] ?? 0),
+            'total_cash' => (float)($money['total_cash'] ?? 0),
+            'total_consignment' => (float)($money['total_consignment'] ?? 0),
+            'total_credit' => (float)($money['total_credit'] ?? 0),
+            'total_other' => (float)($money['total_other'] ?? 0),
+            'total_sold' => (int)($items['total_sold'] ?? 0),
+            'total_reserved' => (int)($items['total_reserved'] ?? 0),
+            'total_reserved_invoices' => (int)($items['reserved_invoices_count'] ?? 0),
+            'total_outstanding' => (float)$total_outstanding,
+        ]);
     }
-
-    $stats['total_outstanding'] = max(0, $stats['total_revenue'] - $stats['total_paid']);
-    wp_send_json_success($stats);
-}
 
     public function get_users_statistics() {
         $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');

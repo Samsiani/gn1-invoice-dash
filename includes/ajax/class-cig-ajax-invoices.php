@@ -209,8 +209,11 @@ class CIG_Ajax_Invoices {
         $payment_data = (array)($d['payment'] ?? []);
         $payment_data['history'] = $hist;
 
-        // Save NEW items and metadata
+        // Save NEW items and metadata (PostMeta - Legacy)
         CIG_Invoice::save_meta($pid, $new_num, (array)($d['buyer'] ?? []), $items, $payment_data);
+        
+        // --- DUAL STORAGE: Sync to Custom Tables (4.0.0) ---
+        $this->sync_to_custom_tables($pid, $new_num, $st, (array)($d['buyer'] ?? []), $items, $hist);
         
         // Update Stock
         $items_for_stock = ($st === 'fictive') ? [] : $items;
@@ -225,12 +228,17 @@ class CIG_Ajax_Invoices {
 
         // --- DATE UPDATE LOGIC ---
         if ($st === 'standard') {
-            $payment_date = '';
-            if (!empty($hist) && is_array($hist)) {
-                $first_payment = reset($hist);
-                $payment_date = $first_payment['date'] ?? '';
+            // Use invoice service for date synchronization
+            if (function_exists('CIG') && isset(CIG()->invoice_service)) {
+                CIG()->invoice_service->update_invoice($pid, ['status' => $st], $hist);
+            } else {
+                $payment_date = '';
+                if (!empty($hist) && is_array($hist)) {
+                    $first_payment = reset($hist);
+                    $payment_date = $first_payment['date'] ?? '';
+                }
+                $this->force_update_invoice_date($pid, $payment_date);
             }
-            $this->force_update_invoice_date($pid, $payment_date);
         }
 
         // --- FULL CACHE PURGE (WP + LiteSpeed) ---
@@ -432,6 +440,136 @@ class CIG_Ajax_Invoices {
         if (defined('LSCWP_V')) {
             $tag = 'PO.' . $post_id;
             @header('X-LiteSpeed-Purge: ' . $tag);
+        }
+    }
+
+    /**
+     * Sync invoice data to custom tables for statistics (4.0.0)
+     *
+     * @param int    $invoice_id     Invoice ID
+     * @param string $invoice_number Invoice number
+     * @param string $status         Invoice status (standard/fictive)
+     * @param array  $buyer          Buyer data
+     * @param array  $items          Invoice items
+     * @param array  $payment_history Payment history
+     */
+    private function sync_to_custom_tables($invoice_id, $invoice_number, $status, $buyer, $items, $payment_history) {
+        global $wpdb;
+
+        $table_invoices = $wpdb->prefix . 'cig_invoices';
+        $table_items    = $wpdb->prefix . 'cig_invoice_items';
+        $table_payments = $wpdb->prefix . 'cig_payments';
+
+        // Check if tables exist
+        $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_invoices));
+        if ($table_exists !== $table_invoices) {
+            return; // Tables not created yet, skip sync
+        }
+
+        // Calculate totals
+        $total = 0;
+        $paid = 0;
+        foreach ($items as $item) {
+            if (($item['status'] ?? '') !== 'canceled') {
+                $total += floatval($item['total'] ?? (floatval($item['qty'] ?? 0) * floatval($item['price'] ?? 0)));
+            }
+        }
+        foreach ($payment_history as $payment) {
+            $paid += floatval($payment['amount'] ?? 0);
+        }
+        $balance = $total - $paid;
+
+        $post = get_post($invoice_id);
+        $created_at = $post->post_date;
+        $updated_at = current_time('mysql');
+
+        // Check if invoice exists in custom table
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $table_invoices WHERE id = %d",
+            $invoice_id
+        ));
+
+        if ($exists) {
+            // Update existing record
+            $wpdb->update(
+                $table_invoices,
+                [
+                    'invoice_number' => $invoice_number,
+                    'type' => $status,
+                    'customer_name' => sanitize_text_field($buyer['name'] ?? ''),
+                    'customer_tax_id' => sanitize_text_field($buyer['tax_id'] ?? ''),
+                    'total' => $total,
+                    'paid' => $paid,
+                    'balance' => $balance,
+                    'updated_at' => $updated_at,
+                    'activation_date' => ($status === 'standard') ? $created_at : null
+                ],
+                ['id' => $invoice_id],
+                ['%s', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%s'],
+                ['%d']
+            );
+        } else {
+            // Insert new record
+            $wpdb->insert(
+                $table_invoices,
+                [
+                    'id' => $invoice_id,
+                    'invoice_number' => $invoice_number,
+                    'type' => $status,
+                    'customer_name' => sanitize_text_field($buyer['name'] ?? ''),
+                    'customer_tax_id' => sanitize_text_field($buyer['tax_id'] ?? ''),
+                    'total' => $total,
+                    'paid' => $paid,
+                    'balance' => $balance,
+                    'created_at' => $created_at,
+                    'updated_at' => $updated_at,
+                    'activation_date' => ($status === 'standard') ? $created_at : null
+                ],
+                ['%d', '%s', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%s']
+            );
+        }
+
+        // Sync items
+        $wpdb->delete($table_items, ['invoice_id' => $invoice_id], ['%d']);
+        foreach ($items as $item) {
+            $wpdb->insert(
+                $table_items,
+                [
+                    'invoice_id' => $invoice_id,
+                    'product_id' => intval($item['product_id'] ?? 0),
+                    'sku' => sanitize_text_field($item['sku'] ?? ''),
+                    'name' => sanitize_text_field($item['name'] ?? ''),
+                    'brand' => sanitize_text_field($item['brand'] ?? ''),
+                    'description' => sanitize_textarea_field($item['desc'] ?? ''),
+                    'image' => esc_url_raw($item['image'] ?? ''),
+                    'qty' => floatval($item['qty'] ?? 0),
+                    'price' => floatval($item['price'] ?? 0),
+                    'total' => floatval($item['total'] ?? 0),
+                    'warranty' => sanitize_text_field($item['warranty'] ?? ''),
+                    'reservation_days' => intval($item['reservation_days'] ?? 0),
+                    'status' => $item['status'] ?? 'sold',
+                    'created_at' => $created_at
+                ],
+                ['%d', '%d', '%s', '%s', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%d', '%s', '%s']
+            );
+        }
+
+        // Sync payments
+        $wpdb->delete($table_payments, ['invoice_id' => $invoice_id], ['%d']);
+        foreach ($payment_history as $payment) {
+            $wpdb->insert(
+                $table_payments,
+                [
+                    'invoice_id' => $invoice_id,
+                    'date' => sanitize_text_field($payment['date'] ?? current_time('Y-m-d')),
+                    'amount' => floatval($payment['amount'] ?? 0),
+                    'payment_method' => sanitize_text_field($payment['method'] ?? 'other'),
+                    'comment' => sanitize_textarea_field($payment['comment'] ?? ''),
+                    'user_id' => intval($payment['user_id'] ?? 0),
+                    'created_at' => current_time('mysql')
+                ],
+                ['%d', '%s', '%f', '%s', '%s', '%d', '%s']
+            );
         }
     }
 }
