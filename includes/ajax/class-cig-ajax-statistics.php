@@ -231,10 +231,20 @@ class CIG_Ajax_Statistics {
         foreach($payment_details as $pd_item) {
             $bd .= '<div style="font-size:11px;color:#333;margin-bottom:2px;">';
             $bd .= number_format($pd_item['amount'], 2) . ' ₾';
-            if ($pd_item['date'] || $pd_item['method']) {
-                $bd .= ' <span style="color:#666;">(' . esc_html($pd_item['date']);
-                if ($pd_item['date'] && $pd_item['method']) $bd .= ' - ';
-                $bd .= esc_html($pd_item['method']) . ')</span>';
+            $has_date = !empty($pd_item['date']);
+            $has_method = !empty($pd_item['method']);
+            if ($has_date || $has_method) {
+                $bd .= ' <span style="color:#666;">(';
+                if ($has_date) {
+                    $bd .= esc_html($pd_item['date']);
+                }
+                if ($has_date && $has_method) {
+                    $bd .= ' - ';
+                }
+                if ($has_method) {
+                    $bd .= esc_html($pd_item['method']);
+                }
+                $bd .= ')</span>';
             }
             $bd .= '</div>';
         }
