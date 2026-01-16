@@ -18,6 +18,9 @@ class CIG_Admin_Columns {
     /** @var CIG_Stock_Manager */
     private $stock;
 
+    /** @var CIG_Invoice_Manager */
+    private $invoice_manager;
+
     /**
      * Constructor
      *
@@ -25,6 +28,7 @@ class CIG_Admin_Columns {
      */
     public function __construct($stock = null) {
         $this->stock = $stock ?: (function_exists('CIG') ? CIG()->stock : null);
+        $this->invoice_manager = CIG_Invoice_Manager::instance();
 
         // --- Invoice columns ---
         add_filter('manage_invoice_posts_columns', [$this, 'invoice_columns']);
@@ -72,13 +76,25 @@ class CIG_Admin_Columns {
     }
 
     public function invoice_column_content($column, $post_id) {
+        // Get invoice data from CIG_Invoice_Manager (uses custom tables with fallback)
+        static $invoice_cache = [];
+        
+        if (!isset($invoice_cache[$post_id])) {
+            $invoice_cache[$post_id] = $this->invoice_manager->get_invoice_by_post_id($post_id);
+        }
+        
+        $invoice_data = $invoice_cache[$post_id];
+        $invoice = $invoice_data['invoice'] ?? [];
+        $items = $invoice_data['items'] ?? [];
+        $customer = $invoice_data['customer'] ?? [];
+
         switch ($column) {
             case 'cig_invoice_number':
-                echo esc_html(get_post_meta($post_id, '_cig_invoice_number', true));
+                echo esc_html($invoice['invoice_number'] ?? '');
                 break;
 
             case 'cig_type':
-                $status = get_post_meta($post_id, '_cig_invoice_status', true) ?: 'standard';
+                $status = $invoice['status'] ?? 'standard';
                 if ($status === 'fictive') {
                     echo '<span style="background:#dc3545; color:#fff; padding:2px 6px; border-radius:3px; font-size:10px; font-weight:bold;">FICTIVE</span>';
                 } else {
@@ -86,8 +102,8 @@ class CIG_Admin_Columns {
                 }
                 break;
 
-            case 'cig_state': // NEW: Lifecycle Status Display
-                $state = get_post_meta($post_id, '_cig_lifecycle_status', true) ?: 'unfinished';
+            case 'cig_state': // Lifecycle Status Display
+                $state = $invoice['lifecycle_status'] ?? 'unfinished';
                 
                 $labels = [
                     'completed'  => ['label' => __('Completed', 'cig'),  'color' => '#155724', 'bg' => '#d4edda'],
@@ -106,20 +122,20 @@ class CIG_Admin_Columns {
                 break;
 
             case 'cig_buyer_name':
-                $name = get_post_meta($post_id, '_cig_buyer_name', true);
-                $tax = get_post_meta($post_id, '_cig_buyer_tax_id', true);
+                $name = $customer['name'] ?? '';
+                $tax = $customer['tax_id'] ?? '';
                 echo '<strong>' . esc_html($name ?: '—') . '</strong>';
                 if ($tax) echo '<br><small style="color:#777;">ID: ' . esc_html($tax) . '</small>';
                 break;
 
             case 'cig_total':
-                $total = get_post_meta($post_id, '_cig_invoice_total', true);
-                echo '<strong>' . number_format(floatval($total), 2) . ' ₾</strong>';
+                $total = floatval($invoice['total_amount'] ?? 0);
+                echo '<strong>' . number_format($total, 2) . ' ₾</strong>';
                 break;
 
             case 'cig_paid': 
-                $paid = (float) get_post_meta($post_id, '_cig_payment_paid_amount', true);
-                $total = (float) get_post_meta($post_id, '_cig_invoice_total', true);
+                $paid = floatval($invoice['paid_amount'] ?? 0);
+                $total = floatval($invoice['total_amount'] ?? 0);
                 $remaining = max(0, $total - $paid);
                 
                 if ($paid <= 0) {
@@ -133,7 +149,7 @@ class CIG_Admin_Columns {
                 break;
 
             case 'cig_rs_status':
-                $is_uploaded = get_post_meta($post_id, '_cig_rs_uploaded', true) === 'yes';
+                $is_uploaded = !empty($invoice['is_rs_uploaded']) && $invoice['is_rs_uploaded'];
                 if ($is_uploaded) {
                     echo '<span class="dashicons dashicons-cloud-saved" style="color:#28a745;" title="Uploaded to RS"></span>';
                 } else {
@@ -142,8 +158,7 @@ class CIG_Admin_Columns {
                 break;
 
             case 'cig_products':
-                $items = get_post_meta($post_id, '_cig_items', true);
-                echo is_array($items) ? esc_html((string) count($items)) : '0';
+                echo esc_html((string) count($items));
                 break;
 
             case 'cig_author':
@@ -209,6 +224,11 @@ class CIG_Admin_Columns {
 
     /**
      * Helper: Calculate stats for a customer (Cached per request)
+     * Uses CIG_Invoice_Manager for efficient SQL-based aggregation
+     *
+     * @since 4.0.0 Updated to use CIG_Invoice_Manager
+     * @param int $customer_id Customer ID
+     * @return array Stats array with count, revenue, paid
      */
     private function get_customer_stats($customer_id) {
         static $cache = [];
@@ -216,43 +236,8 @@ class CIG_Admin_Columns {
             return $cache[$customer_id];
         }
 
-        $args = [
-            'post_type'      => 'invoice',
-            'post_status'    => 'publish',
-            'posts_per_page' => -1,
-            'fields'         => 'ids',
-            'meta_query'     => [
-                [
-                    'key'     => '_cig_customer_id',
-                    'value'   => $customer_id,
-                    'compare' => '='
-                ],
-                [
-                    'relation' => 'OR',
-                    ['key' => '_cig_invoice_status', 'value' => 'standard', 'compare' => '='],
-                    ['key' => '_cig_invoice_status', 'compare' => 'NOT EXISTS']
-                ]
-            ]
-        ];
-
-        $query = new WP_Query($args);
-        
-        $stats = [
-            'count'   => 0,
-            'revenue' => 0,
-            'paid'    => 0
-        ];
-
-        if ($query->have_posts()) {
-            $stats['count'] = count($query->posts);
-            foreach ($query->posts as $inv_id) {
-                $total = (float) get_post_meta($inv_id, '_cig_invoice_total', true);
-                $paid  = (float) get_post_meta($inv_id, '_cig_payment_paid_amount', true);
-                
-                $stats['revenue'] += $total;
-                $stats['paid']    += $paid;
-            }
-        }
+        // Use Invoice Manager for efficient aggregation from custom tables
+        $stats = $this->invoice_manager->get_customer_stats($customer_id);
 
         $cache[$customer_id] = $stats;
         return $stats;

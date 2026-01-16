@@ -13,7 +13,11 @@ if (!defined('ABSPATH')) {
 
 class CIG_Accountant {
 
+    /** @var CIG_Invoice_Manager */
+    private $invoice_manager;
+
     public function __construct() {
+        $this->invoice_manager = CIG_Invoice_Manager::instance();
         add_action('admin_menu', [$this, 'register_menu']);
         add_shortcode('invoice_accountant_dashboard', [$this, 'render_shortcode']);
     }
@@ -241,29 +245,35 @@ class CIG_Accountant {
                     if ($query->have_posts()) {
                         while ($query->have_posts()) {
                             $query->the_post();
-                            $id = get_the_ID();
-                            $inv_num = get_post_meta($id, '_cig_invoice_number', true);
-                            $total = get_post_meta($id, '_cig_invoice_total', true);
+                            $post_id = get_the_ID();
                             
-                            // Statuses (checking both new and old for compatibility)
-                            $st = get_post_meta($id, '_cig_acc_status', true);
-                            $is_rs = ($st === 'rs') || (get_post_meta($id, '_cig_rs_uploaded', true) === 'yes');
-                            $is_corrected = ($st === 'corrected') || (get_post_meta($id, '_cig_accountant_is_corrected', true) === 'yes');
-                            $is_receipt = ($st === 'receipt') || (get_post_meta($id, '_cig_acc_full_check', true) === 'yes');
+                            // Get invoice data from CIG_Invoice_Manager (uses custom tables with fallback)
+                            $invoice_data = $this->invoice_manager->get_invoice_by_post_id($post_id);
+                            $invoice = $invoice_data['invoice'] ?? [];
+                            $payments = $invoice_data['payments'] ?? [];
+                            $customer = $invoice_data['customer'] ?? [];
                             
-                            $acc_note = get_post_meta($id, '_cig_accountant_note', true);
-                            $cons_note = get_post_meta($id, '_cig_general_note', true);
+                            $inv_num = $invoice['invoice_number'] ?? '';
+                            $total = floatval($invoice['total_amount'] ?? 0);
+                            
+                            // Statuses (checking is_rs_uploaded from custom table, fallback to meta for acc_status)
+                            $st = get_post_meta($post_id, '_cig_acc_status', true);
+                            $is_rs = ($st === 'rs') || !empty($invoice['is_rs_uploaded']);
+                            $is_corrected = ($st === 'corrected') || (get_post_meta($post_id, '_cig_accountant_is_corrected', true) === 'yes');
+                            $is_receipt = ($st === 'receipt') || (get_post_meta($post_id, '_cig_acc_full_check', true) === 'yes');
+                            
+                            $acc_note = get_post_meta($post_id, '_cig_accountant_note', true);
+                            $cons_note = $invoice['general_note'] ?? '';
 
-                            // Client
-                            $buyer_name = get_post_meta($id, '_cig_buyer_name', true) ?: '—';
-                            $buyer_tax = get_post_meta($id, '_cig_buyer_tax_id', true);
+                            // Client from customer data
+                            $buyer_name = $customer['name'] ?? '—';
+                            $buyer_tax = $customer['tax_id'] ?? '';
 
-                            // Payment Logic
-                            $history = get_post_meta($id, '_cig_payment_history', true);
+                            // Payment Logic from payments array
                             $payment_str = '—';
-                            if (is_array($history) && !empty($history)) {
+                            if (!empty($payments)) {
                                 $sums = [];
-                                foreach ($history as $h) {
+                                foreach ($payments as $h) {
                                     $m = $h['method'] ?? 'other';
                                     $lbl = $method_labels[$m] ?? $m;
                                     if (!isset($sums[$lbl])) $sums[$lbl] = 0;
@@ -279,9 +289,15 @@ class CIG_Accountant {
                                 }
                             }
                             
+                            // Use sale_date if available, otherwise post date
+                            $display_date = !empty($invoice['sale_date']) ? $invoice['sale_date'] : get_the_date('Y-m-d H:i');
+                            if (!empty($invoice['sale_date'])) {
+                                $display_date = date('Y-m-d H:i', strtotime($invoice['sale_date']));
+                            }
+                            
                             echo '<tr>';
-                            echo '<td>' . get_the_date('Y-m-d H:i') . '</td>';
-                            echo '<td><a href="' . get_permalink($id) . '" target="_blank"><strong>' . esc_html($inv_num) . '</strong></a></td>';
+                            echo '<td>' . esc_html($display_date) . '</td>';
+                            echo '<td><a href="' . get_permalink($post_id) . '" target="_blank"><strong>' . esc_html($inv_num) . '</strong></a></td>';
                             
                             // Client
                             echo '<td><strong>' . esc_html($buyer_name) . '</strong>' . ($buyer_tax ? '<div style="font-size:11px; color:#666;">ID: ' . esc_html($buyer_tax) . '</div>' : '') . '</td>';
@@ -289,7 +305,7 @@ class CIG_Accountant {
                             // Payment
                             echo '<td>' . $payment_str . '</td>';
 
-                            echo '<td>' . esc_html(number_format((float)$total, 2)) . ' ₾</td>';
+                            echo '<td>' . esc_html(number_format($total, 2)) . ' ₾</td>';
                             
                             // Statuses
                             echo '<td style="text-align:center;">' . ($is_rs ? '<span class="dashicons dashicons-cloud-saved" style="color:#28a745;" title="Uploaded"></span>' : '—') . '</td>';
@@ -300,7 +316,7 @@ class CIG_Accountant {
                             echo '<td>' . ($cons_note ? '<div style="background:#f0f0f1; padding:4px; font-size:11px; border-radius:3px;">'.esc_html(mb_strimwidth($cons_note, 0, 30, '...')).'</div>' : '—') . '</td>';
                             echo '<td>' . ($acc_note ? '<div style="background:#fff8e1; padding:4px; font-size:11px; border-radius:3px; color:#856404;">'.esc_html($acc_note).'</div>' : '—') . '</td>';
                             
-                            echo '<td><a href="' . get_permalink($id) . '" class="button button-small" target="_blank">View</a></td>';
+                            echo '<td><a href="' . get_permalink($post_id) . '" class="button button-small" target="_blank">View</a></td>';
                             echo '</tr>';
                         }
                     } else {

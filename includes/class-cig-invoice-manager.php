@@ -770,4 +770,252 @@ class CIG_Invoice_Manager {
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
         return (int) $wpdb->get_var($query);
     }
+
+    /**
+     * Get invoice by invoice number
+     *
+     * @since 4.0.0
+     * @param string $invoice_number Invoice number (e.g., 'N25000001')
+     * @return array|null Invoice data or null if not found
+     */
+    public function get_invoice_by_number($invoice_number) {
+        global $wpdb;
+
+        $invoice_number = sanitize_text_field($invoice_number);
+        if (empty($invoice_number)) {
+            return null;
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $invoice = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$this->table_invoices} WHERE invoice_number = %s",
+                $invoice_number
+            ),
+            ARRAY_A
+        );
+
+        if (!$invoice) {
+            return null;
+        }
+
+        // Get related data
+        $id = intval($invoice['id']);
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $items = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$this->table_items} WHERE invoice_id = %d ORDER BY id ASC",
+                $id
+            ),
+            ARRAY_A
+        );
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $payments = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$this->table_payments} WHERE invoice_id = %d ORDER BY date ASC, id ASC",
+                $id
+            ),
+            ARRAY_A
+        );
+
+        // Get customer info if exists
+        $customer = null;
+        if (!empty($invoice['customer_id'])) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+            $customer = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM {$this->table_customers} WHERE id = %d",
+                    $invoice['customer_id']
+                ),
+                ARRAY_A
+            );
+        }
+
+        return [
+            'invoice'  => $invoice,
+            'items'    => $items ?: [],
+            'payments' => $payments ?: [],
+            'customer' => $customer
+        ];
+    }
+
+    /**
+     * Get invoice data for a WordPress post ID
+     *
+     * This method bridges the gap between WordPress posts and the custom tables.
+     * It looks up the invoice_number from post meta and retrieves data from custom tables.
+     * Falls back to post meta if not found in custom tables (for backward compatibility).
+     *
+     * @since 4.0.0
+     * @param int $post_id WordPress post ID
+     * @return array|null Structured array with invoice data or null if not found
+     */
+    public function get_invoice_by_post_id($post_id) {
+        $post_id = intval($post_id);
+        if ($post_id <= 0) {
+            return null;
+        }
+
+        // Get invoice number from post meta
+        $invoice_number = get_post_meta($post_id, '_cig_invoice_number', true);
+        if (empty($invoice_number)) {
+            return null;
+        }
+
+        // Try to get from custom tables first
+        $invoice_data = $this->get_invoice_by_number($invoice_number);
+
+        // If found in custom tables, return it
+        if ($invoice_data) {
+            // Add post_id reference for convenience
+            $invoice_data['post_id'] = $post_id;
+            return $invoice_data;
+        }
+
+        // Fallback: Build data from post meta for backward compatibility
+        return $this->get_invoice_from_post_meta($post_id);
+    }
+
+    /**
+     * Get invoice data from post meta (fallback for non-migrated data)
+     *
+     * @since 4.0.0
+     * @param int $post_id WordPress post ID
+     * @return array Invoice data structure
+     */
+    private function get_invoice_from_post_meta($post_id) {
+        $invoice_number = get_post_meta($post_id, '_cig_invoice_number', true);
+        $items_raw = get_post_meta($post_id, '_cig_items', true);
+        $payment_history = get_post_meta($post_id, '_cig_payment_history', true);
+
+        // Build invoice data structure
+        $invoice = [
+            'id'               => 0, // No custom table ID
+            'invoice_number'   => $invoice_number,
+            'customer_id'      => intval(get_post_meta($post_id, '_cig_customer_id', true)),
+            'status'           => get_post_meta($post_id, '_cig_invoice_status', true) ?: 'standard',
+            'lifecycle_status' => get_post_meta($post_id, '_cig_lifecycle_status', true) ?: 'unfinished',
+            'total_amount'     => floatval(get_post_meta($post_id, '_cig_invoice_total', true)),
+            'paid_amount'      => floatval(get_post_meta($post_id, '_cig_payment_paid_amount', true)),
+            'created_at'       => get_post_field('post_date', $post_id),
+            'sale_date'        => get_post_field('post_date', $post_id),
+            'author_id'        => intval(get_post_field('post_author', $post_id)),
+            'general_note'     => get_post_meta($post_id, '_cig_general_note', true),
+            'is_rs_uploaded'   => (get_post_meta($post_id, '_cig_rs_uploaded', true) === 'yes') ? 1 : 0
+        ];
+
+        // Build items array
+        $items = [];
+        if (is_array($items_raw)) {
+            foreach ($items_raw as $idx => $item) {
+                $items[] = [
+                    'id'                => $idx + 1,
+                    'invoice_id'        => 0,
+                    'product_id'        => intval($item['product_id'] ?? 0),
+                    'product_name'      => sanitize_text_field($item['name'] ?? ''),
+                    'sku'               => sanitize_text_field($item['sku'] ?? ''),
+                    'quantity'          => floatval($item['qty'] ?? 0),
+                    'price'             => floatval($item['price'] ?? 0),
+                    'item_status'       => sanitize_text_field($item['status'] ?? 'none'),
+                    'warranty_duration' => sanitize_text_field($item['warranty'] ?? ''),
+                    'reservation_days'  => intval($item['reservation_days'] ?? 0),
+                    // Legacy fields for template compatibility
+                    'name'              => sanitize_text_field($item['name'] ?? ''),
+                    'brand'             => sanitize_text_field($item['brand'] ?? ''),
+                    'desc'              => wp_kses_post($item['desc'] ?? ''),
+                    'image'             => esc_url_raw($item['image'] ?? ''),
+                    'qty'               => floatval($item['qty'] ?? 0),
+                    'total'             => floatval($item['total'] ?? 0),
+                    'status'            => sanitize_text_field($item['status'] ?? 'none'),
+                    'warranty'          => sanitize_text_field($item['warranty'] ?? '')
+                ];
+            }
+        }
+
+        // Build payments array
+        $payments = [];
+        if (is_array($payment_history)) {
+            foreach ($payment_history as $idx => $payment) {
+                $payments[] = [
+                    'id'         => $idx + 1,
+                    'invoice_id' => 0,
+                    'amount'     => floatval($payment['amount'] ?? 0),
+                    'date'       => sanitize_text_field($payment['date'] ?? ''),
+                    'method'     => sanitize_text_field($payment['method'] ?? 'other'),
+                    'user_id'    => intval($payment['user_id'] ?? 0),
+                    'comment'    => sanitize_text_field($payment['comment'] ?? '')
+                ];
+            }
+        }
+
+        // Build customer data from buyer info
+        $customer = [
+            'id'      => intval(get_post_meta($post_id, '_cig_customer_id', true)),
+            'name'    => get_post_meta($post_id, '_cig_buyer_name', true),
+            'tax_id'  => get_post_meta($post_id, '_cig_buyer_tax_id', true),
+            'address' => get_post_meta($post_id, '_cig_buyer_address', true),
+            'phone'   => get_post_meta($post_id, '_cig_buyer_phone', true),
+            'email'   => get_post_meta($post_id, '_cig_buyer_email', true)
+        ];
+
+        return [
+            'invoice'  => $invoice,
+            'items'    => $items,
+            'payments' => $payments,
+            'customer' => $customer,
+            'post_id'  => $post_id
+        ];
+    }
+
+    /**
+     * Get customer statistics from custom tables
+     *
+     * @since 4.0.0
+     * @param int $customer_id Customer ID
+     * @return array Stats array with count, revenue, paid
+     */
+    public function get_customer_stats($customer_id) {
+        global $wpdb;
+
+        $customer_id = intval($customer_id);
+        if ($customer_id <= 0) {
+            return ['count' => 0, 'revenue' => 0, 'paid' => 0];
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $stats = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT 
+                    COUNT(*) as count,
+                    COALESCE(SUM(total_amount), 0) as revenue,
+                    COALESCE(SUM(paid_amount), 0) as paid
+                 FROM {$this->table_invoices} 
+                 WHERE customer_id = %d AND status = 'standard'",
+                $customer_id
+            ),
+            ARRAY_A
+        );
+
+        return [
+            'count'   => intval($stats['count'] ?? 0),
+            'revenue' => floatval($stats['revenue'] ?? 0),
+            'paid'    => floatval($stats['paid'] ?? 0)
+        ];
+    }
+
+    /**
+     * Get singleton instance
+     *
+     * @since 4.0.0
+     * @return CIG_Invoice_Manager
+     */
+    public static function instance() {
+        static $instance = null;
+        if (null === $instance) {
+            $instance = new self();
+        }
+        return $instance;
+    }
 }

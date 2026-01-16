@@ -18,17 +18,23 @@ $settings = get_option('cig_settings', []);
 $company_logo = $settings['company_logo'] ?? '';
 $warranty_text = $settings['warranty_text'] ?? ''; // From new setting
 
-// Invoice Data
-$invoice_number = get_post_meta($invoice_id, '_cig_invoice_number', true);
-$buyer_name = get_post_meta($invoice_id, '_cig_buyer_name', true);
-$date = get_the_date('Y-m-d', $invoice_id);
+// Get invoice data from CIG_Invoice_Manager (uses custom tables with fallback to post meta)
+$invoice_manager = CIG_Invoice_Manager::instance();
+$invoice_data = $invoice_manager->get_invoice_by_post_id($invoice_id);
+$invoice = $invoice_data['invoice'] ?? [];
+$items_raw = $invoice_data['items'] ?? [];
+$customer = $invoice_data['customer'] ?? [];
 
-$items = get_post_meta($invoice_id, '_cig_items', true);
-if (!is_array($items)) $items = [];
+$invoice_number = $invoice['invoice_number'] ?? '';
+$buyer_name = $customer['name'] ?? '';
+// Use sale_date if available, fallback to created_at or post date
+$date = !empty($invoice['sale_date']) ? date('Y-m-d', strtotime($invoice['sale_date'])) : get_the_date('Y-m-d', $invoice_id);
 
 // Filter items (Optional: remove empty rows)
-$items = array_filter($items, function($item) {
-    return !empty($item['name']); 
+$items = array_filter($items_raw, function($item) {
+    // Support both custom table field names and legacy field names
+    $name = $item['product_name'] ?? $item['name'] ?? '';
+    return !empty($name); 
 });
 
 // Warranty Map
@@ -125,14 +131,18 @@ $warranty_map = [
                 <?php 
                 $n = 1;
                 foreach ($items as $item): 
-                    $w_key = $item['warranty'] ?? '';
+                    // Support both custom table field names and legacy field names
+                    $w_key = $item['warranty_duration'] ?? $item['warranty'] ?? '';
                     $w_label = isset($warranty_map[$w_key]) ? $warranty_map[$w_key] : '---';
+                    $item_name = $item['product_name'] ?? $item['name'] ?? '';
+                    $item_sku = $item['sku'] ?? '';
+                    $item_qty = $item['quantity'] ?? $item['qty'] ?? 0;
                 ?>
                 <tr>
                     <td class="col-n" style="text-align:center;"><?php echo $n++; ?></td>
-                    <td class="col-name"><?php echo esc_html($item['name']); ?></td>
-                    <td class="col-sku" style="font-family:monospace;"><?php echo esc_html($item['sku']); ?></td>
-                    <td class="col-qty" style="text-align:center;"><?php echo esc_html($item['qty']); ?></td>
+                    <td class="col-name"><?php echo esc_html($item_name); ?></td>
+                    <td class="col-sku" style="font-family:monospace;"><?php echo esc_html($item_sku); ?></td>
+                    <td class="col-qty" style="text-align:center;"><?php echo esc_html($item_qty); ?></td>
                     <td style="text-align:center; font-weight:bold;"><?php echo esc_html($w_label); ?></td>
                 </tr>
                 <?php endforeach; ?>
