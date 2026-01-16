@@ -396,7 +396,7 @@ $current_user = wp_get_current_user();
               <div class="cig-add-payment-row" style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
                   <div style="flex:1; min-width:140px;">
                       <label style="font-size:11px; display:block; margin-bottom:4px; color:#555;"><?php esc_html_e('თარიღი', 'cig'); ?></label>
-                      <input type="date" id="new-pay-date" value="<?php echo date('Y-m-d'); ?>" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px;">
+                      <input type="date" id="new-pay-date" value="<?php echo current_time('Y-m-d'); ?>" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:4px;">
                   </div>
                   <div style="flex:1; min-width:140px;">
                       <label style="font-size:11px; display:block; margin-bottom:4px; color:#555;"><?php esc_html_e('გადახდის მეთოდი', 'cig'); ?></label>

@@ -252,6 +252,7 @@ class CIG_Core {
             $localize_data = [
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('cig_nonce'),
+                'site_date' => current_time('Y-m-d'),
                 'i18n' => [
                     'save_error' => __('Failed to save. Please try again.', 'cig'),
                     'save_success' => __('Invoice saved successfully.', 'cig'),
