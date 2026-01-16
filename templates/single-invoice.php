@@ -261,7 +261,7 @@ $payment_methods_map = [
   $remaining = $grand - $total_paid;
   if (abs($remaining) < 0.001) $remaining = 0;
   
-  // Check if consignment covers the remaining amount (Cash + Consignment >= Total)
+  // Check if consignment payment exists
   $has_consignment = $consignment_total > 0;
   ?>
 

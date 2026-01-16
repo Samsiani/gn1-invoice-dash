@@ -224,29 +224,22 @@ jQuery(function ($) {
       // Consignment Visual Logic
       if (hasConsignment) {
           // Scenario A or B: Consignment exists
-          if (cashTotal > 0) {
-              // Scenario B: Mixed - Cash + Consignment
-              $('#disp-paid-total').text(cashTotal.toFixed(2) + ' ₾');
-              $('#disp-paid-label').text('გადახდილია (Cash):');
-          } else {
-              // Scenario A: Consignment Only - hide the paid row or show 0
-              $('#disp-paid-total').text('0.00 ₾');
-              $('#disp-paid-label').text('გადახდილია:');
-          }
-          
           // Show consignment amount and hide remaining
           $('#disp-consignment-row').show();
           $('#disp-consignment-total').text(consignmentTotal.toFixed(2) + ' ₾');
           $('#disp-remaining-row').hide();
           
-          // Hide Paid row if cash is 0 (Scenario A)
-          if (cashTotal <= 0) {
-              $('#disp-paid-row').hide();
-          } else {
+          if (cashTotal > 0) {
+              // Scenario B: Mixed - Cash + Consignment
               $('#disp-paid-row').show();
+              $('#disp-paid-total').text(cashTotal.toFixed(2) + ' ₾');
+              $('#disp-paid-label').text('გადახდილია (Cash):');
+          } else {
+              // Scenario A: Consignment Only - hide the paid row
+              $('#disp-paid-row').hide();
           }
       } else {
-          // Scenario C: Standard Cash/Bank only
+          // Scenario C: Standard Cash/Bank only (no consignment)
           $('#disp-paid-label').text('გადახდილია:');
           $('#disp-paid-total').text(totalPaid.toFixed(2) + ' ₾');
           $('#disp-consignment-row').hide();
@@ -264,9 +257,10 @@ jQuery(function ($) {
                   $('#disp-remaining').css('color', '#dc3545'); 
               }
           } else {
-              // No payments at all
+              // No payments at all - show remaining as total owed
               $('#disp-paid-row').hide();
-              $('#disp-remaining-row').hide();
+              $('#disp-remaining-row').show();
+              $('#disp-remaining').css('color', '#dc3545').text(grandTotal.toFixed(2) + ' ₾');
           }
       }
   }
