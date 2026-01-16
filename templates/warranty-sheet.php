@@ -27,8 +27,16 @@ $customer = $invoice_data['customer'] ?? [];
 
 $invoice_number = $invoice['invoice_number'] ?? '';
 $buyer_name = $customer['name'] ?? '';
-// Use sale_date if available, fallback to created_at or post date
-$date = !empty($invoice['sale_date']) ? date('Y-m-d', strtotime($invoice['sale_date'])) : get_the_date('Y-m-d', $invoice_id);
+
+// Use sold_date for warranty sheet display, fallback to sale_date, then created_at or post date
+$sold_date = $invoice['sold_date'] ?? '';
+if (!empty($sold_date)) {
+    $date = $sold_date; // sold_date is already in Y-m-d format
+} elseif (!empty($invoice['sale_date'])) {
+    $date = date('Y-m-d', strtotime($invoice['sale_date']));
+} else {
+    $date = get_the_date('Y-m-d', $invoice_id);
+}
 
 // Filter items (Optional: remove empty rows)
 $items = array_filter($items_raw, function($item) {

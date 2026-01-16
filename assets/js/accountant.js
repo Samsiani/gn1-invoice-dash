@@ -59,7 +59,7 @@ jQuery(function($) {
             // ყოველი ჩატვირთვის წინ ვამოწმებთ ღილაკის სტატუსს
             checkResetVisibility(); 
 
-            $('#cig-acc-tbody').html('<tr><td colspan="11" style="text-align:center;padding:30px;"><div class="cig-loading-spinner" style="display:inline-block; border:3px solid #f3f3f3; border-top:3px solid #50529d; border-radius:50%; width:20px; height:20px; animation:spin 1s linear infinite; vertical-align:middle; margin-right:10px;"></div> Loading...</td></tr>');
+            $('#cig-acc-tbody').html('<tr><td colspan="12" style="text-align:center;padding:30px;"><div class="cig-loading-spinner" style="display:inline-block; border:3px solid #f3f3f3; border-top:3px solid #50529d; border-radius:50%; width:20px; height:20px; animation:spin 1s linear infinite; vertical-align:middle; margin-right:10px;"></div> Loading...</td></tr>');
 
             $.ajax({
                 url: cigAjax.ajax_url, 
@@ -81,12 +81,12 @@ jQuery(function($) {
                         renderPagination(res.data.current_page, res.data.total_pages);
                         accCurrentPage = res.data.current_page;
                     } else {
-                        $('#cig-acc-tbody').html('<tr><td colspan="11" style="text-align:center;padding:20px;">No invoices found.</td></tr>');
+                        $('#cig-acc-tbody').html('<tr><td colspan="12" style="text-align:center;padding:20px;">No invoices found.</td></tr>');
                         $('#cig-acc-pagination').empty();
                     }
                 },
                 error: function() {
-                    $('#cig-acc-tbody').html('<tr><td colspan="11" style="text-align:center;color:#dc3545;padding:20px;">Error loading data.</td></tr>');
+                    $('#cig-acc-tbody').html('<tr><td colspan="12" style="text-align:center;color:#dc3545;padding:20px;">Error loading data.</td></tr>');
                 }
             });
         }
@@ -94,7 +94,7 @@ jQuery(function($) {
         // --- Render Table ---
         function renderAccountantTable(invoices) {
             if (!invoices || invoices.length === 0) {
-                $('#cig-acc-tbody').html('<tr><td colspan="11" style="text-align:center;padding:20px;">No invoices found.</td></tr>');
+                $('#cig-acc-tbody').html('<tr><td colspan="12" style="text-align:center;padding:20px;">No invoices found.</td></tr>');
                 return;
             }
 
@@ -112,6 +112,9 @@ jQuery(function($) {
 
                 var colInv = '<a href="' + inv.view_url + '" target="_blank" style="font-weight:700; color:#50529d; display:block; font-size:14px;">' + inv.number + '</a>' +
                              '<span style="font-size:11px; color:#888;">' + inv.date + '</span>';
+
+                // Sold Date column
+                var colSoldDate = inv.sold_date ? '<span style="font-size:13px; color:#333;">' + inv.sold_date + '</span>' : '<span style="color:#ccc;">—</span>';
 
                 var colClient = '<div style="font-weight:600; color:#333;">' + (inv.client_name || '—') + '</div>';
                 if (inv.client_tax) colClient += '<div style="font-size:11px; color:#666;">ID: ' + inv.client_tax + '</div>';
@@ -140,6 +143,7 @@ jQuery(function($) {
 
                 html += '<tr>';
                 html += '<td>' + colInv + '</td>';
+                html += '<td>' + colSoldDate + '</td>';
                 html += '<td>' + colClient + '</td>';
                 html += '<td>' + colPay + '</td>';
                 html += '<td>' + colTotal + '</td>';

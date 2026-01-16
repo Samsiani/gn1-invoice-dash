@@ -290,6 +290,18 @@ class CIG_Core {
                 $localize_data['invoiceId']     = $invoice_id;
                 $localize_data['invoiceNumber'] = get_post_meta($invoice_id, '_cig_invoice_number', true);
                 $localize_data['invoiceStatus'] = get_post_meta($invoice_id, '_cig_invoice_status', true) ?: 'standard';
+                
+                // Get sold_date from custom table or post meta
+                $sold_date = get_post_meta($invoice_id, '_cig_sold_date', true);
+                if (empty($sold_date)) {
+                    // Try to get from custom tables
+                    $invoice_manager = CIG_Invoice_Manager::instance();
+                    $invoice_data = $invoice_manager->get_invoice_by_post_id($invoice_id);
+                    if ($invoice_data && !empty($invoice_data['invoice']['sold_date'])) {
+                        $sold_date = $invoice_data['invoice']['sold_date'];
+                    }
+                }
+                $localize_data['sold_date'] = $sold_date ?: '';
 
                 $localize_data['buyer'] = [
                     'name'    => get_post_meta($invoice_id, '_cig_buyer_name', true),

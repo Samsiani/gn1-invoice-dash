@@ -277,6 +277,19 @@ class CIG_Ajax_Dashboard {
             $date        = get_post_field('post_date', $id);
             $is_partial  = get_post_meta($id, '_cig_payment_is_partial', true) === 'yes';
             
+            // Get sold_date from post meta or custom table
+            $sold_date = get_post_meta($id, '_cig_sold_date', true);
+            if (empty($sold_date)) {
+                // Try to get from custom tables
+                global $wpdb;
+                $table_invoices = $wpdb->prefix . 'cig_invoices';
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+                $sold_date = $wpdb->get_var($wpdb->prepare(
+                    "SELECT sold_date FROM {$table_invoices} WHERE id = %d",
+                    $id
+                ));
+            }
+            
             // Notes
             $acc_note = get_post_meta($id, '_cig_accountant_note', true);
             $consultant_note = get_post_meta($id, '_cig_general_note', true);
@@ -313,6 +326,7 @@ class CIG_Ajax_Dashboard {
                 'id'          => $id,
                 'number'      => get_post_meta($id, '_cig_invoice_number', true),
                 'date'        => date('Y-m-d', strtotime($date)),
+                'sold_date'   => $sold_date ?: '',
                 'total'       => number_format((float)$total, 2) . ' ₾',
                 'client_name' => $buyer_name,
                 'client_tax'  => $buyer_tax,

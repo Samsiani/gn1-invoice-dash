@@ -331,6 +331,12 @@ jQuery(function ($) {
   function prefillEditData() {
     if (!editMode) return;
     $('#invoice-number').val(cigAjax.invoiceNumber || '');
+    
+    // Prefill sold date
+    if (cigAjax.sold_date) {
+        $('#invoice-sold-date').val(cigAjax.sold_date);
+    }
+    
     var b = cigAjax.buyer || {};
     var $bf = $('.buyer-details');
     var sf = function(sel, val) { if(val) { sel.text(val).removeClass('is-empty'); if(sel.is('li>span')) sel.closest('li').removeClass('is-empty'); }};
@@ -458,7 +464,9 @@ jQuery(function ($) {
         payment: { history: paymentHistory },
         status: invoiceStatus,
         // NEW: Grab general note
-        general_note: $('#invoice-general-note').val() 
+        general_note: $('#invoice-general-note').val(),
+        // NEW: Grab sold date (for warranty sheet)
+        sold_date: $('#invoice-sold-date').val() || ''
     };
     if (editMode) payload.invoice_id = invoiceId;
     return payload;

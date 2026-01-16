@@ -96,6 +96,7 @@ class CIG_DB_Installer {
             paid_amount decimal(10,2) DEFAULT 0.00,
             created_at datetime DEFAULT NULL,
             sale_date datetime DEFAULT NULL,
+            sold_date date DEFAULT NULL,
             author_id bigint(20) DEFAULT 0,
             general_note text,
             is_rs_uploaded tinyint(1) DEFAULT 0,
@@ -103,6 +104,7 @@ class CIG_DB_Installer {
             UNIQUE KEY invoice_number (invoice_number),
             KEY status (status),
             KEY sale_date (sale_date),
+            KEY sold_date (sold_date),
             KEY customer_id (customer_id),
             KEY author_id (author_id)
         ) $charset_collate;";

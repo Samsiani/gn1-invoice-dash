@@ -35,10 +35,16 @@ $current_user = wp_get_current_user();
           <img src="<?php echo esc_url($company_logo); ?>" alt="Company Logo">
         <?php endif; ?>
       </div>
-      <h2 class="invoice-title">
-        <?php esc_html_e('Invoice #', 'cig'); ?>
-        <input type="text" value="" id="invoice-number" placeholder="N25000000">
-      </h2>
+      <div style="text-align:right;">
+        <h2 class="invoice-title">
+          <?php esc_html_e('Invoice #', 'cig'); ?>
+          <input type="text" value="" id="invoice-number" placeholder="N25000000">
+        </h2>
+        <div class="invoice-sold-date-wrapper no-print" style="margin-top:10px; font-size:13px;">
+          <label for="invoice-sold-date" style="font-weight:600; color:#555; margin-right:5px;"><?php esc_html_e('Sold Date:', 'cig'); ?></label>
+          <input type="date" id="invoice-sold-date" value="" style="padding:4px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px;">
+        </div>
+      </div>
     </div>
 
     <div class="color-bar"></div>
