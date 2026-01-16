@@ -225,6 +225,10 @@ class CIG_Admin_Columns {
     /**
      * Helper: Calculate stats for a customer (Cached per request)
      * Uses CIG_Invoice_Manager for efficient SQL-based aggregation
+     *
+     * @since 4.0.0 Updated to use CIG_Invoice_Manager
+     * @param int $customer_id Customer ID
+     * @return array Stats array with count, revenue, paid
      */
     private function get_customer_stats($customer_id) {
         static $cache = [];

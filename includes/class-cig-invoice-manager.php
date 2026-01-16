@@ -774,6 +774,7 @@ class CIG_Invoice_Manager {
     /**
      * Get invoice by invoice number
      *
+     * @since 4.0.0
      * @param string $invoice_number Invoice number (e.g., 'N25000001')
      * @return array|null Invoice data or null if not found
      */
@@ -847,6 +848,7 @@ class CIG_Invoice_Manager {
      * It looks up the invoice_number from post meta and retrieves data from custom tables.
      * Falls back to post meta if not found in custom tables (for backward compatibility).
      *
+     * @since 4.0.0
      * @param int $post_id WordPress post ID
      * @return array|null Structured array with invoice data or null if not found
      */
@@ -879,6 +881,7 @@ class CIG_Invoice_Manager {
     /**
      * Get invoice data from post meta (fallback for non-migrated data)
      *
+     * @since 4.0.0
      * @param int $post_id WordPress post ID
      * @return array Invoice data structure
      */
@@ -969,6 +972,7 @@ class CIG_Invoice_Manager {
     /**
      * Get customer statistics from custom tables
      *
+     * @since 4.0.0
      * @param int $customer_id Customer ID
      * @return array Stats array with count, revenue, paid
      */
@@ -1004,6 +1008,7 @@ class CIG_Invoice_Manager {
     /**
      * Get singleton instance
      *
+     * @since 4.0.0
      * @return CIG_Invoice_Manager
      */
     public static function instance() {

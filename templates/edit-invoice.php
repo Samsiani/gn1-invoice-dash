@@ -42,6 +42,11 @@ $buyer_email   = $customer['email'] ?? '';
 // Items Data - normalize field names for template
 $items = [];
 foreach ($items_raw as $item) {
+    // Extract values with fallbacks for field name compatibility
+    $item_qty = floatval($item['quantity'] ?? $item['qty'] ?? 0);
+    $item_price = floatval($item['price'] ?? 0);
+    $item_total = $item['total'] ?? ($item_qty * $item_price);
+    
     $items[] = [
         'product_id'       => $item['product_id'] ?? 0,
         'name'             => $item['product_name'] ?? $item['name'] ?? '',
@@ -49,9 +54,9 @@ foreach ($items_raw as $item) {
         'sku'              => $item['sku'] ?? '',
         'desc'             => $item['desc'] ?? '',
         'image'            => $item['image'] ?? '',
-        'qty'              => $item['quantity'] ?? $item['qty'] ?? 0,
-        'price'            => $item['price'] ?? 0,
-        'total'            => $item['total'] ?? (floatval($item['quantity'] ?? $item['qty'] ?? 0) * floatval($item['price'] ?? 0)),
+        'qty'              => $item_qty,
+        'price'            => $item_price,
+        'total'            => $item_total,
         'status'           => $item['item_status'] ?? $item['status'] ?? 'none',
         'reservation_days' => $item['reservation_days'] ?? 0,
         'warranty'         => $item['warranty_duration'] ?? $item['warranty'] ?? '',
