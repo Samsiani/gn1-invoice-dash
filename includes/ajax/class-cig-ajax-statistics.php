@@ -1171,156 +1171,13 @@ class CIG_Ajax_Statistics {
             ]);
         }
 
-        // Build WHERE clause for date filtering
-        // For standard invoices: filter by sale_date
-        // For fictive invoices: filter by created_at
-        $where_clauses = [];
-        $params = [];
+        // Prepare date parameters
+        $date_from_full = $date_from ? $date_from . ' 00:00:00' : '';
+        $date_to_full = $date_to ? $date_to . ' 23:59:59' : '';
+        $search_like = $search ? '%' . $wpdb->esc_like($search) . '%' : '';
 
-        // Date range filter - applied per invoice type
-        $date_filter_standard = "1=1";
-        $date_filter_fictive = "1=1";
-        
-        if ($date_from) {
-            $date_filter_standard = "inv.sale_date >= %s";
-            $date_filter_fictive = "inv.created_at >= %s";
-            $params['date_from_std'] = $date_from . ' 00:00:00';
-            $params['date_from_fic'] = $date_from . ' 00:00:00';
-        }
-        if ($date_to) {
-            $date_filter_standard .= ($date_from ? " AND inv.sale_date <= %s" : "inv.sale_date <= %s");
-            $date_filter_fictive .= ($date_from ? " AND inv.created_at <= %s" : "inv.created_at <= %s");
-            $params['date_to_std'] = $date_to . ' 23:59:59';
-            $params['date_to_fic'] = $date_to . ' 23:59:59';
-        }
-
-        // Search filter for product name or SKU
-        $search_filter = "1=1";
-        if ($search) {
-            $search_like = '%' . $wpdb->esc_like($search) . '%';
-            $search_filter = "(it.product_name LIKE %s OR it.sku LIKE %s)";
-            $params['search1'] = $search_like;
-            $params['search2'] = $search_like;
-        }
-
-        // Build the aggregation query
-        // Groups by product_id and calculates:
-        // - total_sold: SUM(quantity) WHERE inv.status = 'standard' AND it.item_status = 'sold'
-        // - total_reserved: SUM(quantity) WHERE inv.status = 'standard' AND it.item_status = 'reserved'
-        // - total_fictive: SUM(quantity) WHERE inv.status = 'fictive'
-        // - total_revenue: SUM(total) WHERE inv.status = 'standard' AND it.item_status = 'sold'
-        
-        // Build parameters array for prepared statement
-        $query_params = [];
-        
-        // Parameters for total_sold (standard + sold + date range)
-        if ($date_from) $query_params[] = $params['date_from_std'];
-        if ($date_to) $query_params[] = $params['date_to_std'];
-        
-        // Parameters for total_reserved (standard + reserved + date range)  
-        if ($date_from) $query_params[] = $params['date_from_std'];
-        if ($date_to) $query_params[] = $params['date_to_std'];
-        
-        // Parameters for total_fictive (fictive + date range on created_at)
-        if ($date_from) $query_params[] = $params['date_from_fic'];
-        if ($date_to) $query_params[] = $params['date_to_fic'];
-        
-        // Parameters for total_revenue (standard + sold + date range)
-        if ($date_from) $query_params[] = $params['date_from_std'];
-        if ($date_to) $query_params[] = $params['date_to_std'];
-        
-        // Parameters for search filter (applied twice for name and sku)
-        if ($search) {
-            $query_params[] = $params['search1'];
-            $query_params[] = $params['search2'];
-        }
-
-        // Build date conditions for SQL
-        $date_cond_std = "1=1";
-        $date_cond_fic = "1=1";
-        if ($date_from && $date_to) {
-            $date_cond_std = "inv.sale_date >= %s AND inv.sale_date <= %s";
-            $date_cond_fic = "inv.created_at >= %s AND inv.created_at <= %s";
-        } elseif ($date_from) {
-            $date_cond_std = "inv.sale_date >= %s";
-            $date_cond_fic = "inv.created_at >= %s";
-        } elseif ($date_to) {
-            $date_cond_std = "inv.sale_date <= %s";
-            $date_cond_fic = "inv.created_at <= %s";
-        }
-
-        $search_cond = $search ? "(it.product_name LIKE %s OR it.sku LIKE %s)" : "1=1";
-
-        // Count total products with activity for pagination
-        $count_sql = "SELECT COUNT(DISTINCT it.product_id) as total
-            FROM {$this->table_items} it
-            INNER JOIN {$this->table_invoices} inv ON it.invoice_id = inv.id
-            WHERE {$search_cond}
-            AND (
-                (inv.status = 'standard' AND it.item_status = 'sold' AND {$date_cond_std})
-                OR (inv.status = 'standard' AND it.item_status = 'reserved' AND {$date_cond_std})
-                OR (inv.status = 'fictive' AND {$date_cond_fic})
-            )";
-
-        // Build params for count query
-        $count_params = [];
-        if ($search) {
-            $count_params[] = $params['search1'];
-            $count_params[] = $params['search2'];
-        }
-        // For sold condition
-        if ($date_from) $count_params[] = $params['date_from_std'];
-        if ($date_to) $count_params[] = $params['date_to_std'];
-        // For reserved condition
-        if ($date_from) $count_params[] = $params['date_from_std'];
-        if ($date_to) $count_params[] = $params['date_to_std'];
-        // For fictive condition
-        if ($date_from) $count_params[] = $params['date_from_fic'];
-        if ($date_to) $count_params[] = $params['date_to_fic'];
-
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
-        $total_count = $wpdb->get_var(
-            !empty($count_params) ? $wpdb->prepare($count_sql, $count_params) : $count_sql
-        );
-        $total_pages = max(1, ceil($total_count / $per_page));
-
-        // Main aggregation query
-        $sql = "SELECT 
-            it.product_id,
-            MAX(it.product_name) as product_name,
-            MAX(it.sku) as sku,
-            MAX(it.price) as price,
-            MAX(it.image) as image,
-            COALESCE(SUM(CASE 
-                WHEN inv.status = 'standard' AND it.item_status = 'sold' AND {$date_cond_std}
-                THEN it.quantity ELSE 0 END), 0) as total_sold,
-            COALESCE(SUM(CASE 
-                WHEN inv.status = 'standard' AND it.item_status = 'reserved' AND {$date_cond_std}
-                THEN it.quantity ELSE 0 END), 0) as total_reserved,
-            COALESCE(SUM(CASE 
-                WHEN inv.status = 'fictive' AND {$date_cond_fic}
-                THEN it.quantity ELSE 0 END), 0) as total_fictive,
-            COALESCE(SUM(CASE 
-                WHEN inv.status = 'standard' AND it.item_status = 'sold' AND {$date_cond_std}
-                THEN it.total ELSE 0 END), 0) as total_revenue
-            FROM {$this->table_items} it
-            INNER JOIN {$this->table_invoices} inv ON it.invoice_id = inv.id
-            WHERE {$search_cond}
-            GROUP BY it.product_id
-            HAVING (total_sold > 0 OR total_reserved > 0 OR total_fictive > 0)
-            ORDER BY total_sold DESC, total_reserved DESC, total_fictive DESC
-            LIMIT %d OFFSET %d";
-
-        // Build params for main query - only search params before LIMIT/OFFSET
-        $main_params = [];
-        if ($search) {
-            $main_params[] = $params['search1'];
-            $main_params[] = $params['search2'];
-        }
-        // Note: Date params are embedded in CASE WHEN conditions and need to be added for each case
-        // We need to restructure to add date params properly
-        
-        // Rebuild SQL with explicit date placeholders in CASE statements
+        // Build SQL dynamically based on filters
+        // Main aggregation query with CASE WHEN for conditional sums
         $sql = "SELECT 
             it.product_id,
             MAX(it.product_name) as product_name,
@@ -1355,35 +1212,77 @@ class CIG_Ajax_Statistics {
             ORDER BY total_sold DESC, total_reserved DESC, total_fictive DESC
             LIMIT %d OFFSET %d";
 
-        // Build final params array
-        $final_params = [];
+        // Build parameters array in correct order
+        $params = [];
         // total_sold date params
-        if ($date_from) $final_params[] = $date_from . ' 00:00:00';
-        if ($date_to) $final_params[] = $date_to . ' 23:59:59';
+        if ($date_from) $params[] = $date_from_full;
+        if ($date_to) $params[] = $date_to_full;
         // total_reserved date params
-        if ($date_from) $final_params[] = $date_from . ' 00:00:00';
-        if ($date_to) $final_params[] = $date_to . ' 23:59:59';
+        if ($date_from) $params[] = $date_from_full;
+        if ($date_to) $params[] = $date_to_full;
         // total_fictive date params (uses created_at)
-        if ($date_from) $final_params[] = $date_from . ' 00:00:00';
-        if ($date_to) $final_params[] = $date_to . ' 23:59:59';
+        if ($date_from) $params[] = $date_from_full;
+        if ($date_to) $params[] = $date_to_full;
         // total_revenue date params
-        if ($date_from) $final_params[] = $date_from . ' 00:00:00';
-        if ($date_to) $final_params[] = $date_to . ' 23:59:59';
+        if ($date_from) $params[] = $date_from_full;
+        if ($date_to) $params[] = $date_to_full;
         // search params
         if ($search) {
-            $final_params[] = '%' . $wpdb->esc_like($search) . '%';
-            $final_params[] = '%' . $wpdb->esc_like($search) . '%';
+            $params[] = $search_like;
+            $params[] = $search_like;
         }
         // pagination params
-        $final_params[] = $per_page;
-        $final_params[] = $offset;
+        $params[] = $per_page;
+        $params[] = $offset;
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
-        $results = $wpdb->get_results($wpdb->prepare($sql, $final_params), ARRAY_A);
+        $results = $wpdb->get_results($wpdb->prepare($sql, $params), ARRAY_A);
 
-        // Get stock manager for current stock info
-        $stock_manager = function_exists('CIG') && isset(CIG()->stock) ? CIG()->stock : new CIG_Stock_Manager();
+        // Build count query for pagination
+        $count_sql = "SELECT COUNT(*) FROM (
+            SELECT it.product_id,
+            COALESCE(SUM(CASE 
+                WHEN inv.status = 'standard' AND it.item_status = 'sold'";
+        if ($date_from) $count_sql .= " AND inv.sale_date >= %s";
+        if ($date_to) $count_sql .= " AND inv.sale_date <= %s";
+        $count_sql .= " THEN it.quantity ELSE 0 END), 0) as total_sold,
+            COALESCE(SUM(CASE 
+                WHEN inv.status = 'standard' AND it.item_status = 'reserved'";
+        if ($date_from) $count_sql .= " AND inv.sale_date >= %s";
+        if ($date_to) $count_sql .= " AND inv.sale_date <= %s";
+        $count_sql .= " THEN it.quantity ELSE 0 END), 0) as total_reserved,
+            COALESCE(SUM(CASE 
+                WHEN inv.status = 'fictive'";
+        if ($date_from) $count_sql .= " AND inv.created_at >= %s";
+        if ($date_to) $count_sql .= " AND inv.created_at <= %s";
+        $count_sql .= " THEN it.quantity ELSE 0 END), 0) as total_fictive
+            FROM {$this->table_items} it
+            INNER JOIN {$this->table_invoices} inv ON it.invoice_id = inv.id
+            WHERE " . ($search ? "(it.product_name LIKE %s OR it.sku LIKE %s)" : "1=1") . "
+            GROUP BY it.product_id
+            HAVING (total_sold > 0 OR total_reserved > 0 OR total_fictive > 0)
+        ) as subquery";
 
+        // Build count params (same as main query but without pagination)
+        $count_params = [];
+        if ($date_from) $count_params[] = $date_from_full;
+        if ($date_to) $count_params[] = $date_to_full;
+        if ($date_from) $count_params[] = $date_from_full;
+        if ($date_to) $count_params[] = $date_to_full;
+        if ($date_from) $count_params[] = $date_from_full;
+        if ($date_to) $count_params[] = $date_to_full;
+        if ($search) {
+            $count_params[] = $search_like;
+            $count_params[] = $search_like;
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+        $total_count = $wpdb->get_var(
+            !empty($count_params) ? $wpdb->prepare($count_sql, $count_params) : $count_sql
+        );
+        $total_pages = max(1, ceil(intval($total_count) / $per_page));
+
+        // Process results and get current stock info
         $products = [];
         foreach ($results as $row) {
             $product_id = intval($row['product_id']);
