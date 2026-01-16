@@ -194,6 +194,9 @@ class CIG_Ajax_Invoices {
         // NEW: General Note
         $general_note = sanitize_textarea_field($d['general_note'] ?? '');
         
+        // NEW: Sold Date (for warranty sheet)
+        $sold_date = sanitize_text_field($d['sold_date'] ?? '');
+        
         // 1. Determine Status based on Payment
         $hist = $this->process_payment_history($d['payment']['history'] ?? []);
         $paid = 0; 
@@ -290,6 +293,11 @@ class CIG_Ajax_Invoices {
         // NEW: Save General Note
         update_post_meta($pid, '_cig_general_note', $general_note);
         
+        // NEW: Save Sold Date (for warranty sheet)
+        if (!empty($sold_date)) {
+            update_post_meta($pid, '_cig_sold_date', $sold_date);
+        }
+        
         // Sync Customer to custom table and get customer_id
         $customer_id = 0;
         if (function_exists('CIG') && isset(CIG()->customers)) { 
@@ -327,6 +335,7 @@ class CIG_Ajax_Invoices {
             'paid_amount'      => $paid,
             'author_id'        => get_current_user_id(),
             'general_note'     => $general_note,
+            'sold_date'        => $sold_date,
             'items'            => $items,
             'payments'         => $hist
         ];
@@ -383,6 +392,9 @@ class CIG_Ajax_Invoices {
         }
 
         $now = current_time('mysql');
+        
+        // Handle sold_date - use provided value or null
+        $sold_date = !empty($data['sold_date']) ? sanitize_text_field($data['sold_date']) : null;
 
         // Insert invoice record with explicit ID matching WordPress post ID
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
@@ -398,11 +410,12 @@ class CIG_Ajax_Invoices {
                 'paid_amount'      => floatval($data['paid_amount']),
                 'created_at'       => $now,
                 'sale_date'        => $sale_date,
+                'sold_date'        => $sold_date,
                 'author_id'        => intval($data['author_id']),
                 'general_note'     => $data['general_note'],
                 'is_rs_uploaded'   => 0
             ],
-            ['%d', '%s', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%d', '%s', '%d']
+            ['%d', '%s', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%s', '%d', '%s', '%d']
         );
 
         // Insert items
@@ -445,6 +458,12 @@ class CIG_Ajax_Invoices {
             'general_note'     => $data['general_note']
         ];
         $update_format = ['%s', '%d', '%s', '%f', '%f', '%s'];
+
+        // Handle sold_date field
+        if (isset($data['sold_date'])) {
+            $update_data['sold_date'] = !empty($data['sold_date']) ? sanitize_text_field($data['sold_date']) : null;
+            $update_format[] = '%s';
+        }
 
         // Date Logic: If status is becoming 'standard', calculate sale_date
         // based on the latest payment date
@@ -626,6 +645,12 @@ class CIG_Ajax_Invoices {
             // 5. Mark invoice as completed & standard in postmeta
             update_post_meta($id, '_cig_lifecycle_status', 'completed');
             update_post_meta($id, '_cig_invoice_status', 'standard');
+            
+            // 5b. Auto-fill sold_date if empty when marking as sold
+            $existing_sold_date = get_post_meta($id, '_cig_sold_date', true);
+            if (empty($existing_sold_date)) {
+                update_post_meta($id, '_cig_sold_date', current_time('Y-m-d'));
+            }
 
             // 6. Update custom tables using CIG_Invoice_Manager
             $result = $this->invoice_manager->mark_as_sold($id);

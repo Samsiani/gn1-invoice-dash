@@ -50,6 +50,9 @@ $payment_history = $payments;
 // General Note
 $general_note = $invoice['general_note'] ?? '';
 
+// Sold Date (for warranty sheet)
+$sold_date = $invoice['sold_date'] ?? '';
+
 $current_user = wp_get_current_user();
 $can_edit = current_user_can('manage_woocommerce');
 $can_view_payments = $can_edit || current_user_can('read');
@@ -124,6 +127,11 @@ $payment_methods_map = [
             <span style="font-weight:bold;">
                 <?php esc_html_e('თარიღი:', 'cig'); ?> <?php echo esc_html($created_date); ?>
             </span>
+            <?php if (!empty($sold_date)): ?>
+            <span style="font-weight:bold; margin-left:15px;">
+                <?php esc_html_e('Sold Date:', 'cig'); ?> <?php echo esc_html($sold_date); ?>
+            </span>
+            <?php endif; ?>
         </div>
     </div>
   </div>

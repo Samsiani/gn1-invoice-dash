@@ -57,6 +57,7 @@ class CIG_Invoice_Manager {
      *                    - paid_amount (float)
      *                    - author_id (int)
      *                    - general_note (string)
+     *                    - sold_date (string) Y-m-d format, for warranty sheet
      *                    - items (array) Invoice items
      *                    - payments (array) Payment records
      * @return int|WP_Error Invoice ID on success, WP_Error on failure
@@ -72,6 +73,7 @@ class CIG_Invoice_Manager {
         $paid_amount      = floatval($data['paid_amount'] ?? 0);
         $author_id        = intval($data['author_id'] ?? get_current_user_id());
         $general_note     = sanitize_textarea_field($data['general_note'] ?? '');
+        $sold_date        = isset($data['sold_date']) && !empty($data['sold_date']) ? sanitize_text_field($data['sold_date']) : null;
         $items            = $data['items'] ?? [];
         $payments         = $data['payments'] ?? [];
 
@@ -99,11 +101,12 @@ class CIG_Invoice_Manager {
                 'paid_amount'      => $paid_amount,
                 'created_at'       => $now,
                 'sale_date'        => $sale_date,
+                'sold_date'        => $sold_date,
                 'author_id'        => $author_id,
                 'general_note'     => $general_note,
                 'is_rs_uploaded'   => 0
             ],
-            ['%s', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%d', '%s', '%d']
+            ['%s', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%s', '%d', '%s', '%d']
         );
 
         if (false === $insert_result) {
@@ -195,6 +198,13 @@ class CIG_Invoice_Manager {
             $update_format[]               = '%d';
         }
 
+        // Handle sold_date field (for warranty sheet display)
+        if (isset($data['sold_date'])) {
+            $sold_date_value = !empty($data['sold_date']) ? sanitize_text_field($data['sold_date']) : null;
+            $update_data['sold_date'] = $sold_date_value;
+            $update_format[]          = '%s';
+        }
+
         // Date Logic: If status changes from 'fictive' to 'standard', set sale_date to CURRENT_TIME
         if ($old_status === 'fictive' && $new_status === 'standard') {
             $update_data['sale_date'] = current_time('mysql');
@@ -239,6 +249,7 @@ class CIG_Invoice_Manager {
      * Updates all item statuses from 'reserved' to 'sold'.
      * If sale_date is currently NULL (was Fictive), set it to CURRENT_TIME.
      * If it already has a date (was Reserved), keep the original date.
+     * Auto-fills sold_date if empty when marking as sold.
      *
      * @param int $invoice_id Invoice ID
      * @return bool|WP_Error True on success, WP_Error on failure
@@ -258,6 +269,7 @@ class CIG_Invoice_Manager {
         }
 
         $current_sale_date = $existing['invoice']['sale_date'] ?? null;
+        $current_sold_date = $existing['invoice']['sold_date'] ?? null;
 
         // Prepare update data
         $update_data = [
@@ -270,6 +282,12 @@ class CIG_Invoice_Manager {
         // If already has a date (was Reserved), keep the original date
         if (empty($current_sale_date)) {
             $update_data['sale_date'] = current_time('mysql');
+            $update_format[]          = '%s';
+        }
+
+        // Auto-fill sold_date if empty when marking as sold
+        if (empty($current_sold_date)) {
+            $update_data['sold_date'] = current_time('Y-m-d');
             $update_format[]          = '%s';
         }
 

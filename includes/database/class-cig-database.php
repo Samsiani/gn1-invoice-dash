@@ -37,10 +37,12 @@ class CIG_Database {
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             activation_date datetime DEFAULT NULL,
+            sold_date date DEFAULT NULL,
             PRIMARY KEY  (id),
             KEY invoice_number (invoice_number),
             KEY type (type),
-            KEY activation_date (activation_date)
+            KEY activation_date (activation_date),
+            KEY sold_date (sold_date)
         ) $charset_collate;";
 
         // Invoice Items Table

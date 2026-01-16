@@ -112,6 +112,7 @@ class CIG_Accountant {
                     <thead>
                         <tr>
                             <th style="width:120px;"><?php esc_html_e('Invoice / Date', 'cig'); ?></th>
+                            <th style="width:90px;"><?php esc_html_e('Sale Date', 'cig'); ?></th>
                             <th><?php esc_html_e('Client', 'cig'); ?></th>
                             <th><?php esc_html_e('Payment', 'cig'); ?></th>
                             <th><?php esc_html_e('Total', 'cig'); ?></th>
@@ -127,7 +128,7 @@ class CIG_Accountant {
                         </tr>
                     </thead>
                     <tbody id="cig-acc-tbody">
-                        <tr><td colspan="11" style="text-align:center;padding:20px;">Loading...</td></tr>
+                        <tr><td colspan="12" style="text-align:center;padding:20px;">Loading...</td></tr>
                     </tbody>
                 </table>
                 <div class="cig-acc-pagination" id="cig-acc-pagination"></div>
@@ -199,6 +200,7 @@ class CIG_Accountant {
                 <thead>
                     <tr>
                         <th style="width: 100px;"><?php esc_html_e('Date', 'cig'); ?></th>
+                        <th style="width: 100px;"><?php esc_html_e('Sale Date', 'cig'); ?></th>
                         <th style="width: 130px;"><?php esc_html_e('Invoice #', 'cig'); ?></th>
                         <th><?php esc_html_e('Client', 'cig'); ?></th> <th><?php esc_html_e('Payment', 'cig'); ?></th>
                         <th><?php esc_html_e('Total', 'cig'); ?></th>
@@ -295,8 +297,12 @@ class CIG_Accountant {
                                 $display_date = date('Y-m-d H:i', strtotime($invoice['sale_date']));
                             }
                             
+                            // Get sold_date for display
+                            $sold_date = $invoice['sold_date'] ?? '';
+                            
                             echo '<tr>';
                             echo '<td>' . esc_html($display_date) . '</td>';
+                            echo '<td>' . ($sold_date ? esc_html($sold_date) : '—') . '</td>';
                             echo '<td><a href="' . get_permalink($post_id) . '" target="_blank"><strong>' . esc_html($inv_num) . '</strong></a></td>';
                             
                             // Client
@@ -320,7 +326,7 @@ class CIG_Accountant {
                             echo '</tr>';
                         }
                     } else {
-                        echo '<tr><td colspan="11">' . esc_html__('No relevant invoices found.', 'cig') . '</td></tr>';
+                        echo '<tr><td colspan="12">' . esc_html__('No relevant invoices found.', 'cig') . '</td></tr>';
                     }
                     wp_reset_postdata();
                     ?>
