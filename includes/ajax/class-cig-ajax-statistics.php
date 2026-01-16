@@ -500,7 +500,9 @@ class CIG_Ajax_Statistics {
         ];
 
         // Determine if we're filtering by payment method (cash flow drill-down)
-        $is_payment_method_filter = $mf && $mf !== 'all' && $mf !== 'reserved_invoices';
+        // Include 'all' (Total Paid) case - this should also filter by payment date
+        $is_payment_method_filter = $mf && $mf !== 'reserved_invoices';
+        $is_all_paid_filter = ($mf === 'all');
 
         // Build WHERE clause
         $where = "WHERE 1=1";
@@ -520,8 +522,12 @@ class CIG_Ajax_Statistics {
             $payment_where = "";
             $payment_params = [];
             
-            $payment_where .= " AND p.method = %s AND p.amount > 0.001";
-            $payment_params[] = $mf;
+            // Only filter by specific method if not 'all paid'
+            if (!$is_all_paid_filter) {
+                $payment_where .= " AND p.method = %s";
+                $payment_params[] = $mf;
+            }
+            $payment_where .= " AND p.amount > 0.001";
             
             if ($date_from) { 
                 $payment_where .= " AND p.date >= %s"; 
@@ -628,7 +634,8 @@ class CIG_Ajax_Statistics {
                 if ($amt > 0.001) {
                     // Check if this payment matches the filter (for highlighting)
                     $matches_filter = false;
-                    if ($is_payment_method_filter && $m === $mf) {
+                    // Match specific method OR any method if 'all paid' filter
+                    if ($is_payment_method_filter && ($m === $mf || $is_all_paid_filter)) {
                         $pay_ts = $pay_date ? strtotime($pay_date) : 0;
                         $from_ts = $date_from ? strtotime($date_from . ' 00:00:00') : 0;
                         $to_ts = $date_to ? strtotime($date_to . ' 23:59:59') : PHP_INT_MAX;
@@ -717,7 +724,9 @@ class CIG_Ajax_Statistics {
         $date_to = sanitize_text_field($_POST['date_to'] ?? '');
         
         // Determine if we're filtering by payment method (cash flow drill-down)
-        $is_payment_method_filter = $mf && $mf !== 'all' && $mf !== 'reserved_invoices';
+        // Include 'all' (Total Paid) case - this should also filter by payment date
+        $is_payment_method_filter = $mf && $mf !== 'reserved_invoices';
+        $is_all_paid_filter = ($mf === 'all');
         
         // Use a reasonable limit to avoid performance issues
         // When filtering by payment method, we need to scan more posts since we filter in PHP
@@ -779,8 +788,9 @@ class CIG_Ajax_Statistics {
                     
                     if ($amt > 0.001) {
                         // Check if this payment matches the filter
+                        // Match specific method OR any method if 'all paid' filter
                         $matches_filter = false;
-                        if ($is_payment_method_filter && $m === $mf) {
+                        if ($is_payment_method_filter && ($m === $mf || $is_all_paid_filter)) {
                             $pay_ts = $pay_date ? strtotime($pay_date) : 0;
                             if ($pay_ts >= $from_ts && $pay_ts <= $to_ts) {
                                 $has_matching_payment = true;
