@@ -101,7 +101,7 @@ class CIG_Customers {
         }
 
         // Check if customer exists in custom table by tax_id
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
         $existing_custom_id = $wpdb->get_var(
             $wpdb->prepare(
                 "SELECT id FROM {$table_customers} WHERE tax_id = %s LIMIT 1",
@@ -110,25 +110,27 @@ class CIG_Customers {
         );
 
         if ($existing_custom_id) {
-            // Update existing customer in custom table
+            // Update existing customer in custom table (including tax_id for data integrity)
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-            $wpdb->update(
+            $result = $wpdb->update(
                 $table_customers,
                 [
+                    'tax_id'  => $tax_id,
                     'name'    => $name,
                     'phone'   => $phone,
                     'email'   => $email,
                     'address' => $address,
                 ],
                 ['id' => $existing_custom_id],
-                ['%s', '%s', '%s', '%s'],
+                ['%s', '%s', '%s', '%s', '%s'],
                 ['%d']
             );
+            // Return existing ID even if update had no changes (returns 0 when no rows affected)
             return intval($existing_custom_id);
         } else {
             // Insert new customer into custom table
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-            $wpdb->insert(
+            $result = $wpdb->insert(
                 $table_customers,
                 [
                     'tax_id'  => $tax_id,
@@ -139,6 +141,11 @@ class CIG_Customers {
                 ],
                 ['%s', '%s', '%s', '%s', '%s']
             );
+            
+            // Check if insert was successful
+            if (false === $result) {
+                return $customer_post_id ?: false; // Fallback to post ID on failure
+            }
             return $wpdb->insert_id ?: false;
         }
     }
