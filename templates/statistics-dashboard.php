@@ -78,6 +78,11 @@ if (!defined('ABSPATH')) {
                 </div>
 
                 <div class="cig-filter-group">
+                    <label for="cig-overview-search"><?php esc_html_e('Search:', 'cig'); ?></label>
+                    <input type="text" id="cig-overview-search" class="cig-search-input" placeholder="<?php esc_attr_e('Search Invoice #, Client Name, or Tax ID', 'cig'); ?>" style="min-width:250px;">
+                </div>
+
+                <div class="cig-filter-group">
                     <button type="button" id="cig-export-stats" class="button button-secondary">
                         <span class="dashicons dashicons-download"></span> <?php esc_html_e('Export to Excel', 'cig'); ?>
                     </button>

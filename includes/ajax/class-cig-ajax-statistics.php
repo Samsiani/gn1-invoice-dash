@@ -76,6 +76,7 @@ class CIG_Ajax_Statistics {
         $date_from = sanitize_text_field($_POST['date_from'] ?? '');
         $date_to   = sanitize_text_field($_POST['date_to'] ?? '');
         $status    = sanitize_text_field($_POST['status'] ?? 'standard');
+        $search    = sanitize_text_field($_POST['search'] ?? '');
 
         // Fallback if tables don't exist
         if (!$this->tables_exist()) {
@@ -118,11 +119,21 @@ class CIG_Ajax_Statistics {
             $params_revenue[] = $date_to . ' 23:59:59'; 
         }
 
+        // Search filter: invoice_number, customer_name, customer_tax_id
+        if ($search) {
+            $search_like = '%' . $wpdb->esc_like($search) . '%';
+            $where_revenue .= " AND (i.invoice_number LIKE %s OR c.name LIKE %s OR c.tax_id LIKE %s)";
+            $params_revenue[] = $search_like;
+            $params_revenue[] = $search_like;
+            $params_revenue[] = $search_like;
+        }
+
         // Revenue = Sum of total_amount from invoices where sale_date is in range
         $sql_revenue = "SELECT 
             COUNT(DISTINCT i.id) as invoice_count,
             COALESCE(SUM(i.total_amount), 0) as total_revenue
             FROM {$this->table_invoices} i 
+            LEFT JOIN {$this->table_customers} c ON i.customer_id = c.id
             {$where_revenue}";
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
@@ -155,6 +166,15 @@ class CIG_Ajax_Statistics {
             $where_cashflow .= " AND (i.status = 'standard' OR i.status IS NULL)";
         }
 
+        // Search filter for cashflow
+        if ($search) {
+            $search_like = '%' . $wpdb->esc_like($search) . '%';
+            $where_cashflow .= " AND (i.invoice_number LIKE %s OR c.name LIKE %s OR c.tax_id LIKE %s)";
+            $params_cashflow[] = $search_like;
+            $params_cashflow[] = $search_like;
+            $params_cashflow[] = $search_like;
+        }
+
         $sql_cashflow = "SELECT 
             COALESCE(SUM(p.amount), 0) as total_paid,
             COALESCE(SUM(CASE WHEN p.method = 'company_transfer' THEN p.amount ELSE 0 END), 0) as total_company_transfer,
@@ -165,6 +185,7 @@ class CIG_Ajax_Statistics {
             COUNT(DISTINCT p.invoice_id) as paid_invoices_count
             FROM {$this->table_payments} p 
             LEFT JOIN {$this->table_invoices} i ON p.invoice_id = i.id 
+            LEFT JOIN {$this->table_customers} c ON i.customer_id = c.id
             {$where_cashflow}";
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
@@ -195,12 +216,22 @@ class CIG_Ajax_Statistics {
             $params_items[] = $date_to . ' 23:59:59'; 
         }
 
+        // Search filter for items
+        if ($search) {
+            $search_like = '%' . $wpdb->esc_like($search) . '%';
+            $where_items .= " AND (i.invoice_number LIKE %s OR c.name LIKE %s OR c.tax_id LIKE %s)";
+            $params_items[] = $search_like;
+            $params_items[] = $search_like;
+            $params_items[] = $search_like;
+        }
+
         $sql_items = "SELECT 
             COALESCE(SUM(CASE WHEN it.item_status = 'sold' THEN it.quantity ELSE 0 END), 0) as total_sold,
             COALESCE(SUM(CASE WHEN it.item_status = 'reserved' THEN it.quantity ELSE 0 END), 0) as total_reserved,
             COUNT(DISTINCT CASE WHEN it.item_status = 'reserved' THEN it.invoice_id END) as reserved_invoices_count
             FROM {$this->table_invoices} i 
             LEFT JOIN {$this->table_items} it ON i.id = it.invoice_id 
+            LEFT JOIN {$this->table_customers} c ON i.customer_id = c.id
             {$where_items}";
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
@@ -484,6 +515,7 @@ class CIG_Ajax_Statistics {
         $mf = sanitize_text_field($_POST['payment_method'] ?? '');
         $date_from = sanitize_text_field($_POST['date_from'] ?? '');
         $date_to = sanitize_text_field($_POST['date_to'] ?? '');
+        $search = sanitize_text_field($_POST['search'] ?? '');
 
         // Fallback if tables don't exist - use legacy WP_Query method
         if (!$this->tables_exist()) {
@@ -514,6 +546,15 @@ class CIG_Ajax_Statistics {
             $where .= " AND (i.status = 'standard' OR i.status IS NULL) AND (i.total_amount - i.paid_amount) > 0.01";
         } elseif ($status !== 'all') {
             $where .= " AND (i.status = 'standard' OR i.status IS NULL)";
+        }
+
+        // Search filter: invoice_number, customer_name, customer_tax_id
+        if ($search) {
+            $search_like = '%' . $wpdb->esc_like($search) . '%';
+            $where .= " AND (i.invoice_number LIKE %s OR c.name LIKE %s OR c.tax_id LIKE %s)";
+            $params[] = $search_like;
+            $params[] = $search_like;
+            $params[] = $search_like;
         }
 
         if ($is_payment_method_filter) {
@@ -718,10 +759,12 @@ class CIG_Ajax_Statistics {
      * - When no payment method is selected: filter by post date
      */
     private function get_invoices_by_filters_legacy() {
+        global $wpdb;
         $status = sanitize_text_field($_POST['status'] ?? 'standard');
         $mf = sanitize_text_field($_POST['payment_method'] ?? '');
         $date_from = sanitize_text_field($_POST['date_from'] ?? '');
         $date_to = sanitize_text_field($_POST['date_to'] ?? '');
+        $search = sanitize_text_field($_POST['search'] ?? '');
         
         // Determine if we're filtering by payment method (cash flow drill-down)
         // Include 'all' (Total Paid) case - this should also filter by payment date
@@ -760,6 +803,19 @@ class CIG_Ajax_Statistics {
             if ($count >= self::MAX_DRILL_DOWN_RESULTS) break;
             
             $id=$p->ID;
+
+            // Search filter: invoice_number, buyer_name, buyer_tax_id
+            if ($search) {
+                $invoice_number = get_post_meta($id, '_cig_invoice_number', true) ?: '';
+                $buyer_name = get_post_meta($id, '_cig_buyer_name', true) ?: '';
+                $buyer_tax_id = get_post_meta($id, '_cig_buyer_tax_id', true) ?: '';
+                
+                // stripos is case-insensitive, so use original $search
+                $match = stripos($invoice_number, $search) !== false 
+                      || stripos($buyer_name, $search) !== false 
+                      || stripos($buyer_tax_id, $search) !== false;
+                if (!$match) continue;
+            }
             
             if ($mf === 'reserved_invoices') {
                 $items = get_post_meta($id, '_cig_items', true) ?: [];

@@ -112,6 +112,18 @@ jQuery(function ($) {
     
     $(document).on('click', '#cig-export-stats', handleExport);
 
+    // --- OVERVIEW SEARCH BAR ---
+    var overviewSearchTimeout;
+    $(document).on('input', '#cig-overview-search', function() {
+      clearTimeout(overviewSearchTimeout);
+      var term = $(this).val();
+      overviewSearchTimeout = setTimeout(function() {
+        currentFilters.search = term;
+        clearSummaryDropdowns();
+        loadSummary(true);
+      }, 400);
+    });
+
     var searchTimeout;
     $(document).on('input', '#cig-user-search', function() {
       clearTimeout(searchTimeout);
@@ -268,6 +280,16 @@ jQuery(function ($) {
         loadCustomers();
     });
 
+    // Customer row click - drill-down to invoices
+    $(document).on('click', '.cig-customer-row', function(e) {
+        e.preventDefault();
+        var custId = $(this).data('customer-id');
+        if (custId) {
+            showCustomerDetail(custId);
+        }
+    });
+
+    // Keep old handler for backward compatibility
     $(document).on('click', '.cig-cust-tax-link', function(e) {
         e.preventDefault();
         var custId = $(this).data('id');
@@ -475,7 +497,8 @@ jQuery(function ($) {
           date_from: currentFilters.date_from, 
           date_to: currentFilters.date_to, 
           payment_method: $('#cig-payment-filter').val(), // Global filter if any
-          status: currentFilters.status 
+          status: currentFilters.status,
+          search: currentFilters.search
       },
       success: function(res) {
         if (res && res.success && res.data) { 
@@ -658,7 +681,8 @@ jQuery(function ($) {
           date_from: currentFilters.date_from, 
           date_to: currentFilters.date_to, 
           payment_method: method, // Pass specific method from card
-          status: currentFilters.status 
+          status: currentFilters.status,
+          search: currentFilters.search
       },
       success: function(res) {
         if (res && res.success && res.data && res.data.invoices && res.data.invoices.length) {
@@ -705,7 +729,7 @@ jQuery(function ($) {
       $panel.slideDown(150);
       $.ajax({
           url: cigStats.ajax_url, method: 'POST', dataType: 'json',
-          data: { action: 'cig_get_invoices_by_filters', nonce: cigStats.nonce, date_from: currentFilters.date_from, date_to: currentFilters.date_to, payment_method: currentFilters.payment_method, status: 'outstanding' },
+          data: { action: 'cig_get_invoices_by_filters', nonce: cigStats.nonce, date_from: currentFilters.date_from, date_to: currentFilters.date_to, payment_method: currentFilters.payment_method, status: 'outstanding', search: currentFilters.search },
           success: function(res) {
               if (res && res.success && res.data && res.data.invoices && res.data.invoices.length) {
                   var html = '';
@@ -834,11 +858,11 @@ jQuery(function ($) {
       }
       var html = '';
       customers.forEach(function(c) {
-          var taxLink = '<a href="#" class="cig-cust-tax-link" data-id="' + c.id + '" style="color:#50529d;font-weight:bold;text-decoration:underline;">' + c.tax_id + '</a>';
+          var taxDisplay = escapeHtml(c.tax_id || '—');
           
-          html += '<tr>';
+          html += '<tr class="cig-customer-row" data-customer-id="' + c.id + '" style="cursor:pointer;">';
           html += '<td><strong>' + escapeHtml(c.name) + '</strong></td>';
-          html += '<td>' + taxLink + '</td>';
+          html += '<td style="color:#50529d;font-weight:bold;">' + taxDisplay + '</td>';
           html += '<td>' + c.count + '</td>';
           html += '<td>' + formatCurrency(c.revenue) + '</td>';
           html += '<td style="color:#28a745;">' + formatCurrency(c.paid) + '</td>';
