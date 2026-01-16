@@ -297,7 +297,14 @@ class CIG_Migrator {
             $total_amount     = floatval(get_post_meta($invoice_id, '_cig_invoice_total', true));
             $paid_amount      = floatval(get_post_meta($invoice_id, '_cig_payment_paid_amount', true));
             $general_note     = get_post_meta($invoice_id, '_cig_general_note', true);
-            $is_rs_uploaded   = get_post_meta($invoice_id, '_cig_is_rs_uploaded', true) ? 1 : 0;
+            
+            // Check legacy keys for RS uploaded status
+            // Old versions used '_cig_rs_uploaded', new versions use '_cig_is_rs_uploaded'
+            $rs_legacy = get_post_meta($invoice_id, '_cig_rs_uploaded', true);
+            $rs_new    = get_post_meta($invoice_id, '_cig_is_rs_uploaded', true);
+            
+            // Normalize to integer (1 or 0)
+            $is_rs_uploaded = ($rs_legacy === 'yes' || $rs_new === 'yes' || $rs_new === '1') ? 1 : 0;
 
             // Critical Date Logic for sale_date
             $sale_date = null;

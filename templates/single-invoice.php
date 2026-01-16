@@ -259,7 +259,7 @@ $payment_methods_map = [
       }
   }
   $remaining = $grand - $total_paid;
-  if (abs($remaining) < 0.001) $remaining = 0;
+  if (abs($remaining) < 0.01) $remaining = 0;
   
   // Check if consignment payment exists
   $has_consignment = $consignment_total > 0;
@@ -273,37 +273,33 @@ $payment_methods_map = [
             <td id="grand-total"><?php echo number_format($grand,2,'.','') . '&nbsp;&#8382;'; ?></td>
         </tr>
         
-        <?php if ($has_consignment): ?>
-            <?php // Scenario A or B: Consignment exists ?>
-            <?php if ($cash_total > 0): ?>
-                <?php // Scenario B: Mixed - Cash + Consignment ?>
-                <tr>
-                    <td style="font-size:13px; color:#28a745;"><?php esc_html_e('გადახდილია (Cash)', 'cig'); ?></td>
-                    <td style="font-size:13px; font-weight:bold; color:#28a745;"><?php echo number_format($cash_total, 2, '.', '') . '&nbsp;&#8382;'; ?></td>
-                </tr>
-            <?php endif; ?>
+        <?php // Row 2: Show "Cash Paid" IF $cash_total > 0 ?>
+        <?php if ($cash_total > 0): ?>
+            <tr>
+                <td style="font-size:13px; color:#28a745;"><?php esc_html_e('გადახდილია', 'cig'); ?></td>
+                <td style="font-size:13px; font-weight:bold; color:#28a745;"><?php echo number_format($cash_total, 2, '.', '') . '&nbsp;&#8382;'; ?></td>
+            </tr>
+        <?php endif; ?>
+        
+        <?php // Row 3: Show "Consignment" IF $consignment_total > 0 ?>
+        <?php if ($consignment_total > 0): ?>
             <tr>
                 <td style="font-size:13px; color:#6c757d;"><?php esc_html_e('კონსიგნაცია', 'cig'); ?></td>
                 <td style="font-size:13px; font-weight:bold; color:#6c757d;"><?php echo number_format($consignment_total, 2, '.', '') . '&nbsp;&#8382;'; ?></td>
             </tr>
-            <?php // HIDE "Remaining/Due" row when consignment is present ?>
-        <?php elseif ($total_paid > 0): ?>
-            <?php // Scenario C: Standard Cash/Bank only ?>
+        <?php endif; ?>
+        
+        <?php // Row 4: Show "Remaining/Due" ONLY IF $remaining > 0.01 (If consignment covers balance, hide this row) ?>
+        <?php if ($remaining > 0.01): ?>
             <tr>
-                <td style="font-size:13px; color:#28a745;"><?php esc_html_e('გადახდილია', 'cig'); ?></td>
-                <td style="font-size:13px; font-weight:bold; color:#28a745;"><?php echo number_format($total_paid, 2, '.', '') . '&nbsp;&#8382;'; ?></td>
+                <td style="font-size:13px; color:#dc3545;"><?php esc_html_e('დარჩენილია', 'cig'); ?></td>
+                <td style="font-size:13px; font-weight:bold; color:#dc3545;"><?php echo number_format($remaining, 2, '.', '') . '&nbsp;&#8382;'; ?></td>
             </tr>
+        <?php elseif ($remaining < -0.01): ?>
+            <?php // Overpaid scenario ?>
             <tr>
-                <td style="font-size:13px; color:<?php echo ($remaining < 0) ? '#dc3545' : '#dc3545'; ?>;"><?php esc_html_e('დარჩენილია', 'cig'); ?></td>
-                <td style="font-size:13px; font-weight:bold; color:<?php echo ($remaining < 0) ? '#dc3545' : '#dc3545'; ?>;">
-                    <?php 
-                    if ($remaining < 0) {
-                        echo number_format($remaining, 2, '.', '') . '&nbsp;&#8382; (ზედმეტი)';
-                    } else {
-                        echo number_format($remaining, 2, '.', '') . '&nbsp;&#8382;';
-                    }
-                    ?>
-                </td>
+                <td style="font-size:13px; color:#dc3545;"><?php esc_html_e('დარჩენილია', 'cig'); ?></td>
+                <td style="font-size:13px; font-weight:bold; color:#dc3545;"><?php echo number_format($remaining, 2, '.', '') . '&nbsp;&#8382; (ზედმეტი)'; ?></td>
             </tr>
         <?php endif; ?>
 
