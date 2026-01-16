@@ -423,20 +423,36 @@ jQuery(function ($) {
       });
     });
 
-    // Helper to get value securely (checking is-empty class)
-    var getFieldVal = function(el) {
-        return el.hasClass('is-empty') ? '' : el.text().trim();
+    // Helper to get value from editable element by ID
+    // Checks both is-empty class and placeholder text comparison
+    var getEditableVal = function(selector) {
+        var $el = $(selector);
+        if (!$el.length) return '';
+        
+        // Check if element has is-empty class or parent li has is-empty class
+        if ($el.hasClass('is-empty') || $el.closest('li').hasClass('is-empty')) {
+            return '';
+        }
+        
+        var text = $el.text().trim();
+        var placeholder = $el.attr('data-placeholder') || '';
+        
+        // Return empty if text matches placeholder
+        if (placeholder && text === placeholder) {
+            return '';
+        }
+        
+        return text;
     };
 
-    var $buyer = $('.buyer-details');
     var payload = {
         invoice_number: $('#invoice-number').val(),
         buyer: {
-            name:    getFieldVal($buyer.find('.editable-field').eq(0)), // Name
-            tax_id:  getFieldVal($buyer.find('.editable-field').eq(1)), // Tax ID
-            address: getFieldVal($buyer.find('.editable-value').eq(0)), // Address
-            phone:   getFieldVal($buyer.find('.editable-value').eq(1)), // Phone
-            email:   getFieldVal($buyer.find('.editable-value').eq(2)), // Email
+            name:    getEditableVal('#buyer-name-display'),
+            tax_id:  getEditableVal('#buyer-tax-display'),
+            address: getEditableVal('#buyer-address-display'),
+            phone:   getEditableVal('#buyer-phone-display'),
+            email:   getEditableVal('#buyer-email-display'),
         },
         items: items,
         payment: { history: paymentHistory },
