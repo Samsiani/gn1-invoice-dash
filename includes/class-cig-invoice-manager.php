@@ -447,6 +447,16 @@ class CIG_Invoice_Manager {
         $success = true;
 
         foreach ($items as $item) {
+            // Get quantity and price
+            $qty   = floatval($item['quantity'] ?? $item['qty'] ?? 0);
+            $price = floatval($item['price'] ?? 0);
+
+            // Calculate total if missing or zero
+            $total = floatval($item['total'] ?? 0);
+            if ($total <= 0 && $qty > 0 && $price > 0) {
+                $total = $qty * $price;
+            }
+
             $result = $wpdb->insert(
                 $this->table_items,
                 [
@@ -454,13 +464,14 @@ class CIG_Invoice_Manager {
                     'product_id'        => intval($item['product_id'] ?? 0),
                     'product_name'      => sanitize_text_field($item['product_name'] ?? $item['name'] ?? ''),
                     'sku'               => sanitize_text_field($item['sku'] ?? ''),
-                    'quantity'          => floatval($item['quantity'] ?? $item['qty'] ?? 0),
-                    'price'             => floatval($item['price'] ?? 0),
+                    'quantity'          => $qty,
+                    'price'             => $price,
+                    'total'             => $total,
                     'item_status'       => sanitize_text_field($item['item_status'] ?? $item['status'] ?? 'none'),
                     'warranty_duration' => sanitize_text_field($item['warranty_duration'] ?? $item['warranty'] ?? ''),
                     'reservation_days'  => intval($item['reservation_days'] ?? 0)
                 ],
-                ['%d', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%d']
+                ['%d', '%d', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%d']
             );
 
             if (false === $result) {
