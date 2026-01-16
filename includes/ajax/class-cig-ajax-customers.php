@@ -98,6 +98,8 @@ class CIG_Ajax_Customers {
         $total_pages = ceil($total_customers / $per_page);
 
         // Main query: Get customers with aggregated invoice data
+        // The SQL uses CASE WHEN to conditionally aggregate invoices based on date range
+        // This allows showing only invoices within the selected period while still listing all customers
         $sql = "SELECT 
             c.id,
             c.name,
@@ -112,7 +114,11 @@ class CIG_Ajax_Customers {
             ORDER BY total_revenue DESC
             LIMIT %d OFFSET %d";
 
-        // Combine params: invoice_where params (appear twice for CASE statements), customer where params, pagination
+        // Parameter order in SQL:
+        // 1. $invoice_params (first CASE for COUNT) - date filters
+        // 2. $invoice_params (second CASE for SUM total_amount) - date filters
+        // 3. $params (WHERE clause) - search filters
+        // 4. $per_page, $offset (LIMIT/OFFSET) - pagination
         $all_params = array_merge($invoice_params, $invoice_params, $params, [$per_page, $offset]);
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared

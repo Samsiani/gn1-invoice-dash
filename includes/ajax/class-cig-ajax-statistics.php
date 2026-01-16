@@ -810,10 +810,10 @@ class CIG_Ajax_Statistics {
                 $buyer_name = get_post_meta($id, '_cig_buyer_name', true) ?: '';
                 $buyer_tax_id = get_post_meta($id, '_cig_buyer_tax_id', true) ?: '';
                 
-                $search_lower = strtolower($search);
-                $match = stripos($invoice_number, $search_lower) !== false 
-                      || stripos($buyer_name, $search_lower) !== false 
-                      || stripos($buyer_tax_id, $search_lower) !== false;
+                // stripos is case-insensitive, so use original $search
+                $match = stripos($invoice_number, $search) !== false 
+                      || stripos($buyer_name, $search) !== false 
+                      || stripos($buyer_tax_id, $search) !== false;
                 if (!$match) continue;
             }
             
