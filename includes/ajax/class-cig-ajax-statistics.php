@@ -46,6 +46,9 @@ class CIG_Ajax_Statistics {
         add_action('wp_ajax_cig_get_external_balance', [$this, 'get_external_balance']);
         add_action('wp_ajax_cig_add_deposit', [$this, 'add_deposit']);
         add_action('wp_ajax_cig_delete_deposit', [$this, 'delete_deposit']);
+
+        // --- Top Selling Products ---
+        add_action('wp_ajax_cig_get_top_products', [$this, 'get_top_products']);
     }
 
     /**
@@ -1060,6 +1063,86 @@ class CIG_Ajax_Statistics {
     }
     
     public function export_statistics() { wp_send_json_success(['redirect' => true]); }
+
+    /**
+     * Get top selling products for the Product Insight tab
+     * Returns products sorted by quantity sold (descending)
+     */
+    public function get_top_products() {
+        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
+        global $wpdb;
+
+        $date_from = sanitize_text_field($_POST['date_from'] ?? '');
+        $date_to   = sanitize_text_field($_POST['date_to'] ?? '');
+        $search    = sanitize_text_field($_POST['search'] ?? '');
+
+        // Fallback if tables don't exist
+        if (!$this->tables_exist()) {
+            wp_send_json_success(['products' => []]);
+        }
+
+        // Build WHERE clause - only standard/active invoices
+        // Note: status can be NULL for legacy invoices created before status field was added
+        // These are treated as standard/active invoices
+        $where = "WHERE (i.status = 'standard' OR i.status IS NULL)";
+        $params = [];
+
+        // Filter by sale_date
+        if ($date_from) {
+            $where .= " AND i.sale_date >= %s";
+            $params[] = $date_from . ' 00:00:00';
+        }
+        if ($date_to) {
+            $where .= " AND i.sale_date <= %s";
+            $params[] = $date_to . ' 23:59:59';
+        }
+
+        // Search filter: Product Name OR SKU
+        if ($search) {
+            $search_like = '%' . $wpdb->esc_like($search) . '%';
+            $where .= " AND (it.product_name LIKE %s OR it.sku LIKE %s)";
+            $params[] = $search_like;
+            $params[] = $search_like;
+        }
+
+        // Only sold items count towards sales
+        $where .= " AND it.item_status = 'sold'";
+
+        // Main query: Group by product identity (SKU or name) and aggregate
+        // Use AVG for price to handle cases where same product may have different prices across invoices
+        $sql = "SELECT
+            COALESCE(NULLIF(it.sku, ''), it.product_name) as product_key,
+            MAX(it.product_name) as product_name,
+            MAX(it.sku) as sku,
+            AVG(it.price) as unit_price,
+            SUM(it.quantity) as sold_qty,
+            SUM(it.total) as total_revenue
+            FROM {$this->table_items} it
+            INNER JOIN {$this->table_invoices} i ON it.invoice_id = i.id
+            {$where}
+            GROUP BY product_key
+            ORDER BY sold_qty DESC
+            LIMIT 100";
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+        $results = $wpdb->get_results(
+            !empty($params) ? $wpdb->prepare($sql, $params) : $sql,
+            ARRAY_A
+        );
+
+        $products = [];
+        foreach ($results as $row) {
+            $products[] = [
+                'product_name' => $row['product_name'] ?? '',
+                'sku'          => $row['sku'] ?? '',
+                'price'        => (float)($row['unit_price'] ?? 0),
+                'sold_qty'     => (float)($row['sold_qty'] ?? 0),
+                'total_revenue'=> (float)($row['total_revenue'] ?? 0),
+            ];
+        }
+
+        wp_send_json_success(['products' => $products]);
+    }
 
     /**
      * ----------------------------------------------------------------
