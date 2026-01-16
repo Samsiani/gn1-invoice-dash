@@ -130,6 +130,7 @@ class CIG_DB_Installer {
             product_id bigint(20) DEFAULT 0,
             product_name varchar(255) DEFAULT '',
             sku varchar(100) DEFAULT '',
+            description text,
             quantity decimal(10,2) DEFAULT 0.00,
             price decimal(10,2) DEFAULT 0.00,
             total decimal(10,2) DEFAULT 0.00,
