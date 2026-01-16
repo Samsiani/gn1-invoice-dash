@@ -439,13 +439,15 @@ class CIG_Invoice_Manager {
      *
      * @param int   $invoice_id Invoice ID
      * @param array $items      Array of item data
-     * @return void
+     * @return bool True on success, false if any insertion failed
      */
     private function insert_items($invoice_id, $items) {
         global $wpdb;
 
+        $success = true;
+
         foreach ($items as $item) {
-            $wpdb->insert(
+            $result = $wpdb->insert(
                 $this->table_items,
                 [
                     'invoice_id'        => $invoice_id,
@@ -460,7 +462,13 @@ class CIG_Invoice_Manager {
                 ],
                 ['%d', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%d']
             );
+
+            if (false === $result) {
+                $success = false;
+            }
         }
+
+        return $success;
     }
 
     /**
@@ -468,13 +476,15 @@ class CIG_Invoice_Manager {
      *
      * @param int   $invoice_id Invoice ID
      * @param array $payments   Array of payment data
-     * @return void
+     * @return bool True on success, false if any insertion failed
      */
     private function insert_payments($invoice_id, $payments) {
         global $wpdb;
 
+        $success = true;
+
         foreach ($payments as $payment) {
-            $wpdb->insert(
+            $result = $wpdb->insert(
                 $this->table_payments,
                 [
                     'invoice_id' => $invoice_id,
@@ -486,7 +496,13 @@ class CIG_Invoice_Manager {
                 ],
                 ['%d', '%f', '%s', '%s', '%d', '%s']
             );
+
+            if (false === $result) {
+                $success = false;
+            }
         }
+
+        return $success;
     }
 
     /**
