@@ -53,7 +53,7 @@ foreach ($items_raw as $item) {
         'name'             => $item['product_name'] ?? $item['name'] ?? '',
         'brand'            => $item['brand'] ?? '',
         'sku'              => $item['sku'] ?? '',
-        'desc'             => $item['desc'] ?? '',
+        'desc'             => $item['description'] ?? $item['desc'] ?? '',
         'image'            => $item['image'] ?? '',
         'qty'              => $item_qty,
         'price'            => $item_price,
