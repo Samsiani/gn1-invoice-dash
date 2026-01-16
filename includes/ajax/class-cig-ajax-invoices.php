@@ -32,10 +32,17 @@ class CIG_Ajax_Invoices {
     /** @var CIG_Invoice_Manager */
     private $invoice_manager;
 
+    /** @var string Table names */
+    private $table_invoices;
+    private $table_items;
+    private $table_payments;
+
     /**
      * Constructor
      */
     public function __construct($invoice, $stock, $validator, $security, $cache = null) {
+        global $wpdb;
+        
         $this->invoice   = $invoice;
         $this->stock     = $stock;
         $this->validator = $validator;
@@ -43,12 +50,28 @@ class CIG_Ajax_Invoices {
         $this->cache     = $cache;
         $this->invoice_manager = new CIG_Invoice_Manager();
 
+        // Initialize table names
+        $this->table_invoices  = $wpdb->prefix . 'cig_invoices';
+        $this->table_items     = $wpdb->prefix . 'cig_invoice_items';
+        $this->table_payments  = $wpdb->prefix . 'cig_payments';
+
         // Invoice CRUD
         add_action('wp_ajax_cig_save_invoice',           [$this, 'save_invoice']);
         add_action('wp_ajax_cig_update_invoice',         [$this, 'update_invoice']);
         add_action('wp_ajax_cig_next_invoice_number',    [$this, 'next_invoice_number']);
         add_action('wp_ajax_cig_toggle_invoice_status',  [$this, 'toggle_invoice_status']);
         add_action('wp_ajax_cig_mark_as_sold',           [$this, 'mark_as_sold']);
+    }
+
+    /**
+     * Check if custom tables exist
+     *
+     * @return bool
+     */
+    private function tables_exist() {
+        global $wpdb;
+        $result = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $this->table_invoices));
+        return $result === $this->table_invoices;
     }
 
     /**
@@ -78,6 +101,7 @@ class CIG_Ajax_Invoices {
      */
     private function get_latest_payment_date($payments) {
         $latest_date = null;
+        $latest_timestamp = 0;
         
         if (!is_array($payments) || empty($payments)) {
             return null;
@@ -86,8 +110,10 @@ class CIG_Ajax_Invoices {
         foreach ($payments as $payment) {
             $payment_date = $payment['date'] ?? '';
             if (!empty($payment_date)) {
-                // Compare dates - keep the latest one
-                if ($latest_date === null || $payment_date > $latest_date) {
+                // Use strtotime for proper date comparison
+                $timestamp = strtotime($payment_date);
+                if ($timestamp !== false && $timestamp > $latest_timestamp) {
+                    $latest_timestamp = $timestamp;
                     $latest_date = $payment_date;
                 }
             }
@@ -340,13 +366,8 @@ class CIG_Ajax_Invoices {
     private function create_invoice_in_manager($post_id, $data, $sale_date) {
         global $wpdb;
 
-        $table_invoices  = $wpdb->prefix . 'cig_invoices';
-        $table_items     = $wpdb->prefix . 'cig_invoice_items';
-        $table_payments  = $wpdb->prefix . 'cig_payments';
-
         // Check if tables exist
-        $table_check = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_invoices));
-        if ($table_check !== $table_invoices) {
+        if (!$this->tables_exist()) {
             return; // Tables don't exist yet
         }
 
@@ -355,7 +376,7 @@ class CIG_Ajax_Invoices {
         // Insert invoice record with explicit ID matching WordPress post ID
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $wpdb->insert(
-            $table_invoices,
+            $this->table_invoices,
             [
                 'id'               => $post_id,
                 'invoice_number'   => $data['invoice_number'],
@@ -392,18 +413,15 @@ class CIG_Ajax_Invoices {
     private function update_invoice_in_manager($post_id, $data, $status, $payments) {
         global $wpdb;
 
-        $table_invoices = $wpdb->prefix . 'cig_invoices';
-
         // Check if tables exist
-        $table_check = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_invoices));
-        if ($table_check !== $table_invoices) {
+        if (!$this->tables_exist()) {
             return; // Tables don't exist yet
         }
 
         // Get existing invoice to check old status
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $existing = $wpdb->get_row(
-            $wpdb->prepare("SELECT status, sale_date FROM {$table_invoices} WHERE id = %d", $post_id),
+            $wpdb->prepare("SELECT status, sale_date FROM {$this->table_invoices} WHERE id = %d", $post_id),
             ARRAY_A
         );
 
@@ -435,7 +453,7 @@ class CIG_Ajax_Invoices {
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $wpdb->update(
-            $table_invoices,
+            $this->table_invoices,
             $update_data,
             ['id' => $post_id],
             $update_format,
@@ -459,17 +477,15 @@ class CIG_Ajax_Invoices {
     private function sync_items_to_manager($invoice_id, $items) {
         global $wpdb;
 
-        $table_items = $wpdb->prefix . 'cig_invoice_items';
-
         // Delete existing items
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-        $wpdb->delete($table_items, ['invoice_id' => $invoice_id], ['%d']);
+        $wpdb->delete($this->table_items, ['invoice_id' => $invoice_id], ['%d']);
 
         // Insert new items
         foreach ($items as $item) {
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
             $wpdb->insert(
-                $table_items,
+                $this->table_items,
                 [
                     'invoice_id'        => $invoice_id,
                     'product_id'        => intval($item['product_id'] ?? 0),
@@ -496,11 +512,9 @@ class CIG_Ajax_Invoices {
     private function sync_payments_to_manager($invoice_id, $payments) {
         global $wpdb;
 
-        $table_payments = $wpdb->prefix . 'cig_payments';
-
         // Delete existing payments
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
-        $wpdb->delete($table_payments, ['invoice_id' => $invoice_id], ['%d']);
+        $wpdb->delete($this->table_payments, ['invoice_id' => $invoice_id], ['%d']);
 
         // Insert new payments
         foreach ($payments as $payment) {
@@ -509,13 +523,18 @@ class CIG_Ajax_Invoices {
                 continue;
             }
 
+            $payment_date = sanitize_text_field($payment['date'] ?? '');
+            if (empty($payment_date)) {
+                $payment_date = current_time('Y-m-d');
+            }
+
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
             $wpdb->insert(
-                $table_payments,
+                $this->table_payments,
                 [
                     'invoice_id' => $invoice_id,
                     'amount'     => $amount,
-                    'date'       => sanitize_text_field($payment['date'] ?? current_time('Y-m-d')),
+                    'date'       => $payment_date,
                     'method'     => sanitize_text_field($payment['method'] ?? 'other'),
                     'user_id'    => intval($payment['user_id'] ?? get_current_user_id()),
                     'comment'    => sanitize_text_field($payment['comment'] ?? '')
