@@ -457,8 +457,16 @@ class CIG_Invoice_Manager {
                 $total = $qty * $price;
             }
 
-            // Get image URL and sanitize
-            $image = esc_url_raw($item['image'] ?? '');
+            // Get image URL and sanitize - only store valid http(s) URLs
+            $raw_image = $item['image'] ?? '';
+            $image = '';
+            if (!empty($raw_image)) {
+                $sanitized = esc_url_raw($raw_image);
+                // Only store if it's a valid http or https URL
+                if (preg_match('/^https?:\/\//i', $sanitized)) {
+                    $image = $sanitized;
+                }
+            }
 
             $result = $wpdb->insert(
                 $this->table_items,
@@ -988,7 +996,7 @@ class CIG_Invoice_Manager {
      * Get customer statistics from custom tables
      *
      * @since 4.0.0
-     * @param int $customer_id Customer ID
+     * @param int $customer_id Customer ID from wp_cig_customers table
      * @return array Stats array with count, revenue, paid
      */
     public function get_customer_stats($customer_id) {
@@ -1007,7 +1015,7 @@ class CIG_Invoice_Manager {
                     COALESCE(SUM(total_amount), 0) as revenue,
                     COALESCE(SUM(paid_amount), 0) as paid
                  FROM {$this->table_invoices} 
-                 WHERE customer_id = %d AND status = 'standard'",
+                 WHERE customer_id = %d AND status != 'fictive'",
                 $customer_id
             ),
             ARRAY_A
@@ -1018,6 +1026,44 @@ class CIG_Invoice_Manager {
             'revenue' => floatval($stats['revenue'] ?? 0),
             'paid'    => floatval($stats['paid'] ?? 0)
         ];
+    }
+
+    /**
+     * Get customer statistics by WordPress post ID (cig_customer post type)
+     * Looks up the customer in wp_cig_customers by tax_id stored in post meta
+     *
+     * @since 4.0.0
+     * @param int $post_id WordPress post ID of cig_customer post type
+     * @return array Stats array with count, revenue, paid
+     */
+    public function get_customer_stats_by_post_id($post_id) {
+        global $wpdb;
+
+        $post_id = intval($post_id);
+        if ($post_id <= 0) {
+            return ['count' => 0, 'revenue' => 0, 'paid' => 0];
+        }
+
+        // Get tax_id from the WordPress post meta
+        $tax_id = get_post_meta($post_id, '_cig_customer_tax_id', true);
+        if (empty($tax_id)) {
+            return ['count' => 0, 'revenue' => 0, 'paid' => 0];
+        }
+
+        // Look up the customer_id in wp_cig_customers table by tax_id
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $customer_id = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT id FROM {$this->table_customers} WHERE tax_id = %s LIMIT 1",
+                $tax_id
+            )
+        );
+
+        if (!$customer_id) {
+            return ['count' => 0, 'revenue' => 0, 'paid' => 0];
+        }
+
+        return $this->get_customer_stats(intval($customer_id));
     }
 
     /**

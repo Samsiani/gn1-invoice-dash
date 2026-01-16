@@ -134,6 +134,7 @@ class CIG_DB_Installer {
             item_status varchar(20) DEFAULT 'none',
             warranty_duration varchar(50) DEFAULT '',
             reservation_days int(11) DEFAULT 0,
+            image varchar(500) DEFAULT '',
             PRIMARY KEY  (id),
             KEY invoice_id (invoice_id),
             KEY product_id (product_id),
