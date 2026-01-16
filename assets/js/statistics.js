@@ -22,9 +22,6 @@ jQuery(function ($) {
   var autoRefreshInterval = null;
   var paymentChart = null;
 
-  // Product Insight Filters
-  var currentPiFilter = { productId: 0, dateFrom: '', dateTo: '', range: 'all_time' };
-
   // Customer Insight Variables
   var custPagination = { current_page: 1, per_page: 20, total_pages: 1 };
   var custFilters = { search: '', dateFrom: '', dateTo: '' };
@@ -32,8 +29,10 @@ jQuery(function ($) {
   // External Balance Variables (NEW)
   var extFilters = { dateFrom: '', dateTo: '' };
 
-  // Top Products Variables
-  var topProductsFilters = { dateFrom: '', dateTo: '', search: '' };
+  // Product Performance Table Variables
+  var productPerfFilters = { dateFrom: '', dateTo: '', search: '' };
+  var productPerfData = [];
+  var productPerfSort = { column: 'total_sold', order: 'desc' };
 
   // --- INITIALIZATION ---
   $(document).ready(function() {
@@ -44,13 +43,10 @@ jQuery(function ($) {
     if (activeTab === 'overview') loadStatistics(true);
     else if (activeTab === 'external') loadExternalBalance();
     else if (activeTab === 'customer') loadCustomers();
-    else if (activeTab === 'product') loadTopProducts();
+    else if (activeTab === 'product') loadProductTable();
 
     startAutoRefresh();
     bindEvents();
-    
-    // Initialize Product Search for Product Tab
-    initProductSearch();
   });
 
   function initializeFilters() {
@@ -79,7 +75,7 @@ jQuery(function ($) {
         } else if (tab === 'external') {
             loadExternalBalance();
         } else if (tab === 'product') {
-            loadTopProducts();
+            loadProductTable();
         }
     });
 
@@ -112,10 +108,7 @@ jQuery(function ($) {
       } else if (tab === 'external') {
           loadExternalBalance();
       } else if (tab === 'product') {
-          loadTopProducts();
-          if (currentPiFilter.productId) {
-              loadProductInsight(currentPiFilter.productId);
-          }
+          loadProductTable();
       }
     });
     
@@ -229,47 +222,6 @@ jQuery(function ($) {
       $(target).slideUp(150);
     });
 
-    // --- PRODUCT INSIGHT FILTERS ---
-    $(document).on('click', '.cig-pi-filter-btn', function() {
-         $('.cig-pi-filter-btn').removeClass('active');
-         $(this).addClass('active');
-         var range = $(this).data('filter');
-         currentPiFilter.range = range;
-         
-         var today = new Date();
-         var from = '', to = '';
-         if(range === 'today') {
-             from = formatDate(today); to = formatDate(today);
-         } else if(range === 'this_week') {
-             var ws = new Date(today); var day = ws.getDay(); var diff = (day === 0 ? -6 : 1) - day;
-             ws.setDate(ws.getDate() + diff); from = formatDate(ws); to = formatDate(today);
-         } else if(range === 'this_month') {
-             from = formatDate(new Date(today.getFullYear(), today.getMonth(), 1));
-             to = formatDate(today);
-         } else if(range === 'last_30_days') {
-             var p30 = new Date(today); p30.setDate(today.getDate() - 30);
-             from = formatDate(p30); to = formatDate(today);
-         }
-         
-         $('#cig-pi-date-from').val(from);
-         $('#cig-pi-date-to').val(to);
-         currentPiFilter.dateFrom = from;
-         currentPiFilter.dateTo = to;
-         
-         if(currentPiFilter.productId) loadProductInsight(currentPiFilter.productId);
-    });
-
-    $(document).on('click', '#cig-pi-apply-date', function() {
-         var f = $('#cig-pi-date-from').val();
-         var t = $('#cig-pi-date-to').val();
-         if(f && t) {
-             $('.cig-pi-filter-btn').removeClass('active');
-             currentPiFilter.dateFrom = f;
-             currentPiFilter.dateTo = t;
-             if(currentPiFilter.productId) loadProductInsight(currentPiFilter.productId);
-         }
-    });
-
     // --- CUSTOMER INSIGHT EVENTS ---
     var custSearchTimeout;
     $(document).on('input', '#cig-customer-search', function() {
@@ -334,22 +286,36 @@ jQuery(function ($) {
         deleteDeposit($(this).data('id'));
     });
 
-    // --- TOP PRODUCTS EVENTS ---
-    $(document).on('click', '#cig-tp-apply-filters', function() {
-        topProductsFilters.dateFrom = $('#cig-tp-date-from').val();
-        topProductsFilters.dateTo = $('#cig-tp-date-to').val();
-        topProductsFilters.search = $('#cig-tp-search').val();
-        loadTopProducts();
+    // --- PRODUCT PERFORMANCE TABLE EVENTS ---
+    // Date Apply Button
+    $(document).on('click', '#cig-pp-apply-date', function() {
+        productPerfFilters.dateFrom = $('#cig-pp-date-from').val();
+        productPerfFilters.dateTo = $('#cig-pp-date-to').val();
+        loadProductTable();
     });
 
-    // Search on Enter key
-    $(document).on('keypress', '#cig-tp-search', function(e) {
-        if (e.which === 13) {
-            topProductsFilters.dateFrom = $('#cig-tp-date-from').val();
-            topProductsFilters.dateTo = $('#cig-tp-date-to').val();
-            topProductsFilters.search = $(this).val();
-            loadTopProducts();
+    // Live Search with Debounce (300ms)
+    var productSearchTimeout;
+    $(document).on('input', '#cig-pp-search', function() {
+        clearTimeout(productSearchTimeout);
+        var val = $(this).val();
+        productSearchTimeout = setTimeout(function() {
+            productPerfFilters.search = val;
+            loadProductTable();
+        }, 300);
+    });
+
+    // Sortable Headers for Product Performance Table
+    $(document).on('click', '#cig-product-perf-table .sortable', function() {
+        var column = $(this).data('sort');
+        if (productPerfSort.column === column) {
+            productPerfSort.order = productPerfSort.order === 'asc' ? 'desc' : 'asc';
+        } else {
+            productPerfSort.column = column;
+            productPerfSort.order = 'desc';
         }
+        sortProductTable();
+        updateProductSortArrows();
     });
   }
 
@@ -480,60 +446,116 @@ jQuery(function ($) {
       });
   }
 
-  // --- TOP SELLING PRODUCTS LOGIC ---
+  // --- PRODUCT PERFORMANCE TABLE LOGIC ---
 
   /**
-   * Load Top Selling Products table
-   * Fetches data from cig_get_top_products AJAX action
+   * Load Product Performance Table
+   * Fetches data from cig_get_product_performance_table AJAX action
    */
-  function loadTopProducts() {
+  function loadProductTable() {
       // Show loading state
-      $('#cig-top-products-tbody').html('<tr class="loading-row"><td colspan="5"><div class="cig-loading-spinner"><div class="spinner"></div><p>Loading top products...</p></div></td></tr>');
+      $('#cig-product-perf-tbody').html('<tr class="loading-row"><td colspan="7"><div class="cig-loading-spinner"><div class="spinner"></div><p>Loading product performance...</p></div></td></tr>');
 
       $.ajax({
           url: cigStats.ajax_url,
           method: 'POST',
           dataType: 'json',
           data: {
-              action: 'cig_get_top_products',
+              action: 'cig_get_product_performance_table',
               nonce: cigStats.nonce,
-              date_from: topProductsFilters.dateFrom,
-              date_to: topProductsFilters.dateTo,
-              search: topProductsFilters.search
+              date_from: productPerfFilters.dateFrom,
+              date_to: productPerfFilters.dateTo,
+              search: productPerfFilters.search,
+              sort_by: productPerfSort.column,
+              sort_order: productPerfSort.order
           },
           success: function(res) {
               if (res.success && res.data && res.data.products) {
-                  renderTopProductsTable(res.data.products);
+                  productPerfData = res.data.products;
+                  renderProductTable(productPerfData);
+                  updateProductSortArrows();
               } else {
-                  $('#cig-top-products-tbody').html('<tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">No products found</td></tr>');
+                  $('#cig-product-perf-tbody').html('<tr><td colspan="7" style="text-align:center; padding:20px; color:#999;">No products found</td></tr>');
               }
           },
           error: function() {
-              $('#cig-top-products-tbody').html('<tr><td colspan="5" style="text-align:center; padding:20px; color:#dc3545;">Error loading products</td></tr>');
+              $('#cig-product-perf-tbody').html('<tr><td colspan="7" style="text-align:center; padding:20px; color:#dc3545;">Error loading products</td></tr>');
           }
       });
   }
 
   /**
-   * Render Top Selling Products table rows
+   * Sort Product Table client-side
    */
-  function renderTopProductsTable(products) {
+  function sortProductTable() {
+      if (!productPerfData || !productPerfData.length) return;
+
+      productPerfData.sort(function(a, b) {
+          var aVal = a[productPerfSort.column];
+          var bVal = b[productPerfSort.column];
+          
+          // Handle null values
+          if (aVal === null) aVal = 0;
+          if (bVal === null) bVal = 0;
+          
+          if (productPerfSort.order === 'asc') {
+              return aVal > bVal ? 1 : (aVal < bVal ? -1 : 0);
+          }
+          return aVal < bVal ? 1 : (aVal > bVal ? -1 : 0);
+      });
+
+      renderProductTable(productPerfData);
+  }
+
+  /**
+   * Update sort arrows in Product Performance table
+   */
+  function updateProductSortArrows() {
+      $('#cig-product-perf-table .sortable').removeClass('active-sort').removeAttr('data-order');
+      var $active = $('#cig-product-perf-table .sortable[data-sort="' + productPerfSort.column + '"]');
+      $active.addClass('active-sort').attr('data-order', productPerfSort.order);
+  }
+
+  /**
+   * Render Product Performance Table rows
+   */
+  function renderProductTable(products) {
       if (!products || !products.length) {
-          $('#cig-top-products-tbody').html('<tr><td colspan="5" style="text-align:center; padding:20px; color:#999;">No products found</td></tr>');
+          $('#cig-product-perf-tbody').html('<tr><td colspan="7" style="text-align:center; padding:20px; color:#999;">No products found</td></tr>');
           return;
       }
 
       var html = '';
+      var placeholderImg = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"%3E%3Crect fill="%23f0f0f0" width="48" height="48"/%3E%3Ctext x="24" y="28" font-family="sans-serif" font-size="8" fill="%23999" text-anchor="middle"%3ENo Image%3C/text%3E%3C/svg%3E';
+
       products.forEach(function(product) {
+          var imgSrc = product.image || placeholderImg;
+          var stockDisplay = product.stock !== null ? formatNumber(product.stock) : '—';
+          var stockStyle = '';
+          if (product.stock !== null && product.stock <= 0) {
+              stockStyle = 'color:#dc3545;font-weight:bold;';
+          } else if (product.stock !== null && product.stock <= 5) {
+              stockStyle = 'color:#ffc107;font-weight:bold;';
+          }
+
           html += '<tr>';
-          html += '<td><strong>' + escapeHtml(product.product_name || '—') + '</strong></td>';
-          html += '<td>' + escapeHtml(product.sku || '—') + '</td>';
+          // Photo
+          html += '<td><img src="' + imgSrc + '" alt="" style="width:48px;height:48px;object-fit:contain;border:1px solid #eee;border-radius:4px;background:#fff;"></td>';
+          // Product (Name + SKU)
+          html += '<td><div><strong>' + escapeHtml(product.name || '—') + '</strong><br><small style="color:#888;">' + escapeHtml(product.sku || '—') + '</small></div></td>';
+          // Price
           html += '<td>' + formatCurrency(product.price) + '</td>';
-          html += '<td><span class="cig-badge badge-sold">' + formatNumber(product.sold_qty) + '</span></td>';
+          // Stock
+          html += '<td style="' + stockStyle + '">' + stockDisplay + '</td>';
+          // Reserved
+          html += '<td><span class="cig-badge badge-reserved">' + formatNumber(product.reserved) + '</span></td>';
+          // Total Sold
+          html += '<td><span class="cig-badge badge-sold">' + formatNumber(product.total_sold) + '</span></td>';
+          // Total Revenue
           html += '<td><strong style="color:#28a745;">' + formatCurrency(product.total_revenue) + '</strong></td>';
           html += '</tr>';
       });
-      $('#cig-top-products-tbody').html(html);
+      $('#cig-product-perf-tbody').html(html);
   }
 
   // --- OVERVIEW LOGIC ---
@@ -1025,124 +1047,6 @@ jQuery(function ($) {
           html += '</tr>';
       });
       $('#cig-cust-invoices-tbody').html(html);
-  }
-
-  // --- PRODUCT INSIGHT LOGIC ---
-  function initProductSearch() {
-      $('#cig-product-insight-search').autocomplete({
-          minLength: 2,
-          source: function(request, response) {
-              $.ajax({
-                  url: cigStats.ajax_url,
-                  method: 'POST',
-                  dataType: 'json',
-                  data: {
-                      action: 'cig_search_products', 
-                      nonce: cigStats.nonce,
-                      term: request.term
-                  },
-                  success: function(data) { response(data || []); },
-                  error: function() { response([]); }
-              });
-          },
-          select: function(event, ui) {
-              currentPiFilter.productId = ui.item.id;
-              $('#cig-product-filters').slideDown();
-              loadProductInsight(ui.item.id);
-          }
-      });
-  }
-
-  function loadProductInsight(productId) {
-      $('#cig-product-insight-results').hide();
-      $('#cig-pi-loading').show();
-
-      $.ajax({
-          url: cigStats.ajax_url,
-          method: 'POST',
-          dataType: 'json',
-          data: {
-              action: 'cig_get_product_insight',
-              nonce: cigStats.nonce,
-              product_id: productId,
-              date_from: currentPiFilter.dateFrom,
-              date_to: currentPiFilter.dateTo
-          },
-          success: function(res) {
-              $('#cig-pi-loading').hide();
-              if(res.success && res.data) {
-                  renderProductInsight(res.data);
-                  $('#cig-product-insight-results').fadeIn();
-              } else {
-                  alert('Error loading data');
-              }
-          },
-          error: function() {
-              $('#cig-pi-loading').hide();
-              alert('Connection error');
-          }
-      });
-  }
-
-  function renderProductInsight(data) {
-      $('#cig-pi-img').attr('src', data.image);
-      $('#cig-pi-title').text(data.name);
-      $('#cig-pi-sku').text(data.sku);
-      $('#cig-pi-price').text(formatCurrency(data.current_price));
-
-      $('#cig-pi-sold').text(formatNumber(data.total_sold));
-      $('#cig-pi-revenue').text(formatCurrency(data.total_revenue));
-      $('#cig-pi-stock').text(formatNumber(data.stock_qty));
-      $('#cig-pi-reserved').text(formatNumber(data.total_reserved));
-
-      var payHtml = '';
-      if(data.payment_breakdown && Object.keys(data.payment_breakdown).length) {
-          Object.keys(data.payment_breakdown).forEach(function(k){
-              var label = cigStats.payment_types[k] || k;
-              payHtml += '<tr><td>' + label + '</td><td><strong>' + formatCurrency(data.payment_breakdown[k]) + '</strong></td></tr>';
-          });
-      } else {
-          payHtml = '<tr><td colspan="2" style="color:#999;">No sales in this period</td></tr>';
-      }
-      $('#cig-pi-payments-tbody').html(payHtml);
-
-      var statHtml = '';
-      statHtml += '<tr><td><span class="cig-badge badge-canceled" style="background:#f8d7da;color:#721c24;">Fictive</span></td><td><strong>' + formatNumber(data.total_fictive) + '</strong></td><td>Items in fictive invoices</td></tr>';
-      statHtml += '<tr><td><span class="cig-badge badge-canceled">Canceled</span></td><td><strong>' + formatNumber(data.total_canceled) + '</strong></td><td>Items in canceled invoices</td></tr>';
-      $('#cig-pi-statuses-tbody').html(statHtml);
-
-      var invHtml = '';
-      if(data.product_invoices && data.product_invoices.length > 0) {
-          data.product_invoices.forEach(function(inv){
-              var typeBadge = (inv.type === 'fictive') 
-                  ? '<span class="cig-badge badge-canceled" style="background:#f8d7da;color:#721c24;">Fictive</span>' 
-                  : '<span class="cig-badge badge-sold" style="background:#d4edda;color:#155724;">Active</span>';
-              
-              var stClass = 'badge-sold';
-              if(inv.status === 'reserved') stClass = 'badge-reserved';
-              if(inv.status === 'canceled') stClass = 'badge-canceled';
-              var statusSpan = '<span class="cig-badge '+stClass+'">' + capitalize(inv.status) + '</span>';
-
-              invHtml += '<tr>';
-              invHtml += '<td>' + inv.date + '</td>';
-              invHtml += '<td><a href="' + inv.edit_url + '" target="_blank" style="font-weight:bold;color:#50529d;">' + escapeHtml(inv.number) + '</a></td>';
-              invHtml += '<td>' + escapeHtml(inv.customer) + '</td>';
-              invHtml += '<td>' + typeBadge + '</td>';
-              invHtml += '<td>' + statusSpan + '</td>';
-              invHtml += '<td><strong>' + formatNumber(inv.qty) + '</strong></td>';
-              invHtml += '<td>' + formatCurrency(inv.price) + '</td>';
-              invHtml += '<td>' + formatCurrency(inv.total) + '</td>';
-              invHtml += '<td>' + escapeHtml(inv.author) + '</td>';
-              invHtml += '</tr>';
-          });
-      } else {
-          invHtml = '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px;">No invoices found for this period</td></tr>';
-      }
-      $('#cig-pi-invoices-tbody').html(invHtml);
-  }
-
-  function capitalize(s) {
-      return s && s[0].toUpperCase() + s.slice(1);
   }
 
   // Utility functions

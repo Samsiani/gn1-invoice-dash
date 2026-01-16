@@ -355,49 +355,49 @@ if (!defined('ABSPATH')) {
     </div>
 
     <div id="cig-tab-product" class="cig-tab-content" style="display:none;">
-        <!-- Top Selling Products Filter Bar -->
-        <div class="cig-stats-filters-bar" id="cig-top-products-filters">
+        <!-- Product Performance Filter Bar -->
+        <div class="cig-stats-filters-bar" id="cig-product-perf-filters">
             <div class="cig-filters-row">
                 <div class="cig-filter-group">
                     <label><?php esc_html_e('Date Range:', 'cig'); ?></label>
                     <div class="cig-date-range">
-                        <input type="date" id="cig-tp-date-from" class="cig-date-input">
+                        <input type="date" id="cig-pp-date-from" class="cig-date-input">
                         <span>-</span>
-                        <input type="date" id="cig-tp-date-to" class="cig-date-input">
+                        <input type="date" id="cig-pp-date-to" class="cig-date-input">
+                        <button type="button" id="cig-pp-apply-date" class="button button-primary"><?php esc_html_e('Apply', 'cig'); ?></button>
                     </div>
                 </div>
                 <div class="cig-filter-group">
                     <label><?php esc_html_e('Search:', 'cig'); ?></label>
-                    <input type="text" id="cig-tp-search" class="cig-search-input" placeholder="<?php esc_attr_e('Product Name or SKU...', 'cig'); ?>" style="min-width:200px;">
-                </div>
-                <div class="cig-filter-group">
-                    <button type="button" id="cig-tp-apply-filters" class="button button-primary"><?php esc_html_e('Apply', 'cig'); ?></button>
+                    <input type="text" id="cig-pp-search" class="cig-search-input" placeholder="<?php esc_attr_e('Search Product Name or SKU...', 'cig'); ?>" style="min-width:250px;">
                 </div>
             </div>
         </div>
 
-        <!-- Top Selling Products Table -->
-        <div class="cig-table-card" id="cig-top-products-panel">
+        <!-- Product Performance Table -->
+        <div class="cig-table-card" id="cig-product-perf-panel">
             <div class="cig-section-header cig-users-header-inline">
-                <h2><?php esc_html_e('Top Selling Products', 'cig'); ?></h2>
+                <h2><?php esc_html_e('Product Performance', 'cig'); ?></h2>
             </div>
             <div class="cig-table-container">
-                <table class="cig-stats-table" id="cig-top-products-table">
+                <table class="cig-stats-table" id="cig-product-perf-table">
                     <thead>
                         <tr>
-                            <th><?php esc_html_e('Product Name', 'cig'); ?></th>
-                            <th><?php esc_html_e('SKU', 'cig'); ?></th>
-                            <th><?php esc_html_e('Price', 'cig'); ?></th>
-                            <th><?php esc_html_e('Sold Qty', 'cig'); ?></th>
-                            <th><?php esc_html_e('Total Revenue', 'cig'); ?></th>
+                            <th style="width:60px;"><?php esc_html_e('Photo', 'cig'); ?></th>
+                            <th><?php esc_html_e('Product', 'cig'); ?></th>
+                            <th class="sortable" data-sort="price"><?php esc_html_e('Price', 'cig'); ?></th>
+                            <th class="sortable" data-sort="stock"><?php esc_html_e('Stock', 'cig'); ?></th>
+                            <th class="sortable" data-sort="reserved"><?php esc_html_e('Reserved', 'cig'); ?></th>
+                            <th class="sortable" data-sort="total_sold"><?php esc_html_e('Total Sold', 'cig'); ?></th>
+                            <th class="sortable" data-sort="total_revenue"><?php esc_html_e('Total Revenue', 'cig'); ?></th>
                         </tr>
                     </thead>
-                    <tbody id="cig-top-products-tbody">
+                    <tbody id="cig-product-perf-tbody">
                         <tr class="loading-row">
-                            <td colspan="5">
+                            <td colspan="7">
                                 <div class="cig-loading-spinner">
                                     <div class="spinner"></div>
-                                    <p><?php esc_html_e('Loading top products...', 'cig'); ?></p>
+                                    <p><?php esc_html_e('Loading product performance...', 'cig'); ?></p>
                                 </div>
                             </td>
                         </tr>
@@ -405,71 +405,6 @@ if (!defined('ABSPATH')) {
                 </table>
             </div>
         </div>
-
-        <!-- Legacy Product Insight Section (Hidden by default, shown when searching specific product) -->
-        <div class="cig-product-search-hero" style="margin-top: 30px;">
-            <input type="text" id="cig-product-insight-search" class="cig-hero-input" placeholder="<?php esc_attr_e('Search specific product for detailed insight...', 'cig'); ?>">
-            <span class="dashicons dashicons-search cig-hero-icon"></span>
-        </div>
-
-        <div class="cig-stats-filters-bar" id="cig-product-filters" style="display:none;">
-            <div class="cig-filters-row">
-                <div class="cig-filter-group">
-                    <label><?php esc_html_e('Time Period:', 'cig'); ?></label>
-                    <div class="cig-quick-filters">
-                        <button type="button" class="cig-pi-filter-btn active" data-filter="all_time"><?php esc_html_e('All Time', 'cig'); ?></button>
-                        <button type="button" class="cig-pi-filter-btn" data-filter="this_month"><?php esc_html_e('This Month', 'cig'); ?></button>
-                        <button type="button" class="cig-pi-filter-btn" data-filter="last_30_days"><?php esc_html_e('Last 30 Days', 'cig'); ?></button>
-                    </div>
-                </div>
-                <div class="cig-filter-group">
-                    <label><?php esc_html_e('Custom Range:', 'cig'); ?></label>
-                    <div class="cig-date-range">
-                        <input type="date" id="cig-pi-date-from" class="cig-date-input">
-                        <span>-</span>
-                        <input type="date" id="cig-pi-date-to" class="cig-date-input">
-                        <button type="button" id="cig-pi-apply-date" class="button button-primary"><?php esc_html_e('Apply', 'cig'); ?></button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="cig-product-insight-results" style="display:none;">
-            <div class="cig-pi-header">
-                <div class="cig-pi-image-wrapper"><img id="cig-pi-img" src="" alt=""></div>
-                <div class="cig-pi-details">
-                    <h2 id="cig-pi-title"></h2>
-                    <div class="cig-pi-meta">
-                        <span class="cig-pi-sku-wrap">SKU: <strong id="cig-pi-sku"></strong></span>
-                        <span class="cig-pi-price-wrap">Price: <strong id="cig-pi-price"></strong></span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="cig-stats-summary">
-                <div class="cig-stat-card"><div class="cig-stat-icon" style="background:#28a745;"><span class="dashicons dashicons-cart"></span></div><div class="cig-stat-content"><div class="cig-stat-label"><?php esc_html_e('Total Sold', 'cig'); ?></div><div class="cig-stat-value" id="cig-pi-sold">0</div></div></div>
-                <div class="cig-stat-card"><div class="cig-stat-icon" style="background:#17a2b8;"><span class="dashicons dashicons-money-alt"></span></div><div class="cig-stat-content"><div class="cig-stat-label"><?php esc_html_e('Total Revenue', 'cig'); ?></div><div class="cig-stat-value" id="cig-pi-revenue">0.00 ₾</div></div></div>
-                <div class="cig-stat-card"><div class="cig-stat-icon" style="background:#50529d;"><span class="dashicons dashicons-archive"></span></div><div class="cig-stat-content"><div class="cig-stat-label"><?php esc_html_e('In Stock', 'cig'); ?></div><div class="cig-stat-value" id="cig-pi-stock">0</div></div></div>
-                <div class="cig-stat-card"><div class="cig-stat-icon" style="background:#ffc107;"><span class="dashicons dashicons-lock"></span></div><div class="cig-stat-content"><div class="cig-stat-label"><?php esc_html_e('Reserved', 'cig'); ?></div><div class="cig-stat-value" id="cig-pi-reserved">0</div></div></div>
-            </div>
-
-            <div class="cig-stats-grid">
-                <div class="cig-table-card">
-                    <div class="cig-section-header cig-users-header-inline"><h3><?php esc_html_e('Revenue by Payment Method', 'cig'); ?></h3></div>
-                    <div class="cig-table-container"><table class="cig-stats-table"><thead><tr><th>Method</th><th>Revenue</th></tr></thead><tbody id="cig-pi-payments-tbody"></tbody></table></div>
-                </div>
-                <div class="cig-table-card">
-                    <div class="cig-section-header cig-users-header-inline"><h3><?php esc_html_e('Other Statuses', 'cig'); ?></h3></div>
-                    <div class="cig-table-container"><table class="cig-stats-table"><thead><tr><th>Status</th><th>Quantity</th><th>Note</th></tr></thead><tbody id="cig-pi-statuses-tbody"></tbody></table></div>
-                </div>
-            </div>
-
-            <div class="cig-table-card" style="margin-top: 20px;">
-                <div class="cig-section-header cig-users-header-inline"><h3><?php esc_html_e('Product Invoices History', 'cig'); ?></h3></div>
-                <div class="cig-table-container"><table class="cig-stats-table"><thead><tr><th>Date</th><th>Invoice #</th><th>Customer</th><th>Type</th><th>Status</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Author</th></tr></thead><tbody id="cig-pi-invoices-tbody"></tbody></table></div>
-            </div>
-        </div>
-        <div id="cig-pi-loading" style="display:none; text-align:center; padding:50px;"><div class="cig-loading-spinner"><div class="spinner"></div><p>Analyzing product data...</p></div></div>
     </div>
 
     <div id="cig-tab-customer" class="cig-tab-content" style="display:none;">

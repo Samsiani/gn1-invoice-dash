@@ -49,6 +49,9 @@ class CIG_Ajax_Statistics {
 
         // --- Top Selling Products ---
         add_action('wp_ajax_cig_get_top_products', [$this, 'get_top_products']);
+
+        // --- Product Performance Table ---
+        add_action('wp_ajax_cig_get_product_performance_table', [$this, 'get_product_performance_table']);
     }
 
     /**
@@ -1139,6 +1142,143 @@ class CIG_Ajax_Statistics {
                 'sold_qty'     => (float)($row['sold_qty'] ?? 0),
                 'total_revenue'=> (float)($row['total_revenue'] ?? 0),
             ];
+        }
+
+        wp_send_json_success(['products' => $products]);
+    }
+
+    /**
+     * Get Product Performance Table for the redesigned Product Insight tab
+     * Returns aggregated product data with current stock, reserved, sold qty, and revenue
+     */
+    public function get_product_performance_table() {
+        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
+        global $wpdb;
+
+        $date_from = sanitize_text_field($_POST['date_from'] ?? '');
+        $date_to   = sanitize_text_field($_POST['date_to'] ?? '');
+        $search    = sanitize_text_field($_POST['search'] ?? '');
+        $sort_by   = sanitize_text_field($_POST['sort_by'] ?? 'total_sold');
+        $sort_order = strtoupper(sanitize_text_field($_POST['sort_order'] ?? 'DESC'));
+        
+        // Validate sort order
+        if (!in_array($sort_order, ['ASC', 'DESC'], true)) {
+            $sort_order = 'DESC';
+        }
+
+        // Base query: Get all products (simple and variations)
+        $args = [
+            'post_type'      => ['product', 'product_variation'],
+            'post_status'    => 'publish',
+            'posts_per_page' => 200,
+            'fields'         => 'ids',
+        ];
+
+        // Search filter: Product Title or SKU
+        if ($search) {
+            $args['meta_query'] = [
+                'relation' => 'OR',
+                [
+                    'key'     => '_sku',
+                    'value'   => $search,
+                    'compare' => 'LIKE',
+                ],
+            ];
+            $args['s'] = $search;
+        }
+
+        $product_ids = get_posts($args);
+        
+        // If tables don't exist, return empty
+        if (!$this->tables_exist()) {
+            wp_send_json_success(['products' => []]);
+        }
+
+        // Build date filter for aggregation query
+        $date_where = "";
+        $date_params = [];
+        if ($date_from) {
+            $date_where .= " AND i.sale_date >= %s";
+            $date_params[] = $date_from . ' 00:00:00';
+        }
+        if ($date_to) {
+            $date_where .= " AND i.sale_date <= %s";
+            $date_params[] = $date_to . ' 23:59:59';
+        }
+
+        // Get stock manager instance
+        $stock_manager = function_exists('CIG') && isset(CIG()->stock_manager) ? CIG()->stock_manager : new CIG_Stock_Manager();
+
+        $products = [];
+
+        foreach ($product_ids as $product_id) {
+            $product = wc_get_product($product_id);
+            if (!$product) continue;
+
+            // Get product data
+            $product_name = $product->get_name();
+            $sku = $product->get_sku();
+            $price = $product->get_price();
+            $stock_qty = $product->get_stock_quantity();
+            $image_url = wp_get_attachment_image_url($product->get_image_id(), 'thumbnail') ?: '';
+
+            // Search filter validation (in case WP_Query didn't fully filter)
+            if ($search) {
+                $search_lower = strtolower($search);
+                if (stripos($product_name, $search) === false && stripos($sku ?: '', $search) === false) {
+                    continue;
+                }
+            }
+
+            // Get reserved stock using CIG_Stock_Manager
+            $reserved_qty = $stock_manager->get_reserved($product_id);
+
+            // Query aggregated sales data from invoice items
+            // Only count items where invoice status = 'standard' (Active) and item_status = 'sold'
+            $sql = "SELECT 
+                COALESCE(SUM(it.quantity), 0) as total_sold,
+                COALESCE(SUM(it.total), 0) as total_revenue
+                FROM {$this->table_items} it
+                INNER JOIN {$this->table_invoices} i ON it.invoice_id = i.id
+                WHERE it.product_id = %d
+                AND it.item_status = 'sold'
+                AND (i.status = 'standard' OR i.status IS NULL)
+                {$date_where}";
+
+            $params = array_merge([$product_id], $date_params);
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+            $sales_data = $wpdb->get_row($wpdb->prepare($sql, $params), ARRAY_A);
+
+            $total_sold = (float)($sales_data['total_sold'] ?? 0);
+            $total_revenue = (float)($sales_data['total_revenue'] ?? 0);
+
+            $products[] = [
+                'product_id'    => $product_id,
+                'image'         => $image_url,
+                'name'          => $product_name,
+                'sku'           => $sku ?: '',
+                'price'         => (float)$price,
+                'stock'         => $stock_qty !== null ? (float)$stock_qty : null,
+                'reserved'      => (float)$reserved_qty,
+                'total_sold'    => $total_sold,
+                'total_revenue' => $total_revenue,
+            ];
+        }
+
+        // Sort results
+        $valid_sort_columns = ['price', 'stock', 'reserved', 'total_sold', 'total_revenue'];
+        if (in_array($sort_by, $valid_sort_columns, true)) {
+            usort($products, function($a, $b) use ($sort_by, $sort_order) {
+                $a_val = $a[$sort_by] ?? 0;
+                $b_val = $b[$sort_by] ?? 0;
+                if ($a_val === null) $a_val = 0;
+                if ($b_val === null) $b_val = 0;
+                if ($sort_order === 'ASC') {
+                    return $a_val <=> $b_val;
+                }
+                return $b_val <=> $a_val;
+            });
         }
 
         wp_send_json_success(['products' => $products]);
