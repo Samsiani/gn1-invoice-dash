@@ -1082,6 +1082,8 @@ class CIG_Ajax_Statistics {
         }
 
         // Build WHERE clause - only standard/active invoices
+        // Note: status can be NULL for legacy invoices created before status field was added
+        // These are treated as standard/active invoices
         $where = "WHERE (i.status = 'standard' OR i.status IS NULL)";
         $params = [];
 
@@ -1107,17 +1109,18 @@ class CIG_Ajax_Statistics {
         $where .= " AND it.item_status = 'sold'";
 
         // Main query: Group by product identity (SKU or name) and aggregate
+        // Use AVG for price to handle cases where same product may have different prices across invoices
         $sql = "SELECT
             COALESCE(NULLIF(it.sku, ''), it.product_name) as product_key,
-            it.product_name,
-            it.sku,
-            it.price as unit_price,
+            MAX(it.product_name) as product_name,
+            MAX(it.sku) as sku,
+            AVG(it.price) as unit_price,
             SUM(it.quantity) as sold_qty,
             SUM(it.total) as total_revenue
             FROM {$this->table_items} it
             INNER JOIN {$this->table_invoices} i ON it.invoice_id = i.id
             {$where}
-            GROUP BY product_key, it.product_name, it.sku, it.price
+            GROUP BY product_key
             ORDER BY sold_qty DESC
             LIMIT 100";
 
