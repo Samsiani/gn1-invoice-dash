@@ -493,6 +493,7 @@ class CIG_Invoice_Manager {
                     'product_id'        => intval($item['product_id'] ?? 0),
                     'product_name'      => sanitize_text_field($item['product_name'] ?? $item['name'] ?? ''),
                     'sku'               => sanitize_text_field($item['sku'] ?? ''),
+                    'description'       => sanitize_textarea_field($item['description'] ?? $item['desc'] ?? ''),
                     'quantity'          => $qty,
                     'price'             => $price,
                     'total'             => $total,
@@ -501,7 +502,7 @@ class CIG_Invoice_Manager {
                     'reservation_days'  => intval($item['reservation_days'] ?? 0),
                     'image'             => $image
                 ],
-                ['%d', '%d', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%d', '%s']
+                ['%d', '%d', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%d', '%s']
             );
 
             if (false === $result) {
