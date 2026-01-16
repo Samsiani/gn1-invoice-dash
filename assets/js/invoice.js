@@ -216,52 +216,38 @@ jQuery(function ($) {
 
       var remaining = grandTotal - totalPaid;
       if (Math.abs(remaining) < 0.01) remaining = 0;
-      
-      var hasConsignment = consignmentTotal > 0;
 
       $('#disp-grand-total').text(grandTotal.toFixed(2) + ' ₾');
       
-      // Consignment Visual Logic
-      if (hasConsignment) {
-          // Scenario A or B: Consignment exists
-          // Show consignment amount and hide remaining
+      // Consignment Visual Logic - replicate PHP template logic
+      // Row 2: Show "Cash Paid" IF cashTotal > 0
+      if (cashTotal > 0) {
+          $('#disp-paid-row').show();
+          $('#disp-paid-total').text(cashTotal.toFixed(2) + ' ₾');
+          $('#disp-paid-label').text('გადახდილია:');
+      } else {
+          $('#disp-paid-row').hide();
+      }
+      
+      // Row 3: Show "Consignment" IF consignmentTotal > 0
+      if (consignmentTotal > 0) {
           $('#disp-consignment-row').show();
           $('#disp-consignment-total').text(consignmentTotal.toFixed(2) + ' ₾');
-          $('#disp-remaining-row').hide();
-          
-          if (cashTotal > 0) {
-              // Scenario B: Mixed - Cash + Consignment
-              $('#disp-paid-row').show();
-              $('#disp-paid-total').text(cashTotal.toFixed(2) + ' ₾');
-              $('#disp-paid-label').text('გადახდილია (Cash):');
-          } else {
-              // Scenario A: Consignment Only - hide the paid row
-              $('#disp-paid-row').hide();
-          }
       } else {
-          // Scenario C: Standard Cash/Bank only (no consignment)
-          $('#disp-paid-label').text('გადახდილია:');
-          $('#disp-paid-total').text(totalPaid.toFixed(2) + ' ₾');
           $('#disp-consignment-row').hide();
-          
-          if (totalPaid > 0) {
-              $('#disp-paid-row').show();
-              $('#disp-remaining-row').show();
-              $('#disp-remaining').text(remaining.toFixed(2) + ' ₾');
-              
-              if (remaining === 0) { 
-                  $('#disp-remaining').css('color', '#28a745').text('0.00 ₾ (გადახდილია)'); 
-              } else if (remaining < 0) { 
-                  $('#disp-remaining').css('color', '#dc3545').text(remaining.toFixed(2) + ' ₾ (ზედმეტი)'); 
-              } else { 
-                  $('#disp-remaining').css('color', '#dc3545'); 
-              }
-          } else {
-              // No payments at all - show remaining as total owed
-              $('#disp-paid-row').hide();
-              $('#disp-remaining-row').show();
-              $('#disp-remaining').css('color', '#dc3545').text(grandTotal.toFixed(2) + ' ₾');
-          }
+      }
+      
+      // Row 4: Show "Remaining/Due" ONLY IF remaining > 0.01 (If consignment covers balance, hide this row)
+      if (remaining > 0.01) {
+          $('#disp-remaining-row').show();
+          $('#disp-remaining').css('color', '#dc3545').text(remaining.toFixed(2) + ' ₾');
+      } else if (remaining < -0.01) {
+          // Overpaid scenario
+          $('#disp-remaining-row').show();
+          $('#disp-remaining').css('color', '#dc3545').text(remaining.toFixed(2) + ' ₾ (ზედმეტი)');
+      } else {
+          // Remaining is 0 or covered by payments - hide remaining row
+          $('#disp-remaining-row').hide();
       }
   }
 
