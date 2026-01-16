@@ -1207,7 +1207,7 @@ class CIG_Ajax_Statistics {
         }
 
         // Get stock manager instance
-        $stock_manager = function_exists('CIG') && isset(CIG()->stock_manager) ? CIG()->stock_manager : new CIG_Stock_Manager();
+        $stock_manager = function_exists('CIG') && isset(CIG()->stock) ? CIG()->stock : new CIG_Stock_Manager();
 
         $products = [];
 
