@@ -190,12 +190,23 @@ jQuery(function ($) {
       if ($tbody.length === 0) return;
       $tbody.empty();
       var totalPaid = 0;
+      var cashTotal = 0;
+      var consignmentTotal = 0;
       var grandTotal = parseFloat($('#grand-total').text()) || 0;
 
       if (paymentHistory.length > 0) {
           paymentHistory.forEach(function(pay, index) {
               var amount = parseFloat(pay.amount);
+              var method = (pay.method || '').toLowerCase();
               totalPaid += amount;
+              
+              // Separate cash vs consignment
+              if (method === 'consignment') {
+                  consignmentTotal += amount;
+              } else {
+                  cashTotal += amount;
+              }
+              
               var labels = { 'company_transfer': 'კომპანიის გადარიცხვა', 'cash': 'ქეში', 'consignment': 'კონსიგნაცია', 'credit': 'განვადება', 'other': 'სხვა' };
               var methodLabel = labels[pay.method] || pay.method;
               var rowHtml = '<tr><td style="padding:10px; border-bottom:1px solid #eee; color:#555;">' + (pay.date || '-') + '</td><td style="padding:10px; border-bottom:1px solid #eee; color:#555;">' + (methodLabel || '-') + '</td><td style="padding:10px; border-bottom:1px solid #eee; text-align:right; font-weight:bold; color:#333;">' + amount.toFixed(2) + ' ₾</td><td style="padding:10px; border-bottom:1px solid #eee; text-align:center;">' + (!isReadOnly ? '<span class="dashicons dashicons-trash btn-delete-payment" data-index="' + index + '" style="color:#dc3545; cursor:pointer; font-size:16px; opacity:0.7;" title="წაშლა"></span>' : '') + '</td></tr>';
@@ -205,14 +216,59 @@ jQuery(function ($) {
 
       var remaining = grandTotal - totalPaid;
       if (Math.abs(remaining) < 0.01) remaining = 0;
+      
+      var hasConsignment = consignmentTotal > 0;
 
       $('#disp-grand-total').text(grandTotal.toFixed(2) + ' ₾');
-      $('#disp-paid-total').text(totalPaid.toFixed(2) + ' ₾');
-      $('#disp-remaining').text(remaining.toFixed(2) + ' ₾');
-
-      if (remaining === 0 && totalPaid > 0) { $('#disp-remaining').css('color', '#28a745').text('0.00 ₾ (გადახდილია)'); } 
-      else if (remaining < 0) { $('#disp-remaining').css('color', '#dc3545').text(remaining.toFixed(2) + ' ₾ (ზედმეტი)'); } 
-      else { $('#disp-remaining').css('color', '#dc3545'); }
+      
+      // Consignment Visual Logic
+      if (hasConsignment) {
+          // Scenario A or B: Consignment exists
+          if (cashTotal > 0) {
+              // Scenario B: Mixed - Cash + Consignment
+              $('#disp-paid-total').text(cashTotal.toFixed(2) + ' ₾');
+              $('#disp-paid-label').text('გადახდილია (Cash):');
+          } else {
+              // Scenario A: Consignment Only - hide the paid row or show 0
+              $('#disp-paid-total').text('0.00 ₾');
+              $('#disp-paid-label').text('გადახდილია:');
+          }
+          
+          // Show consignment amount and hide remaining
+          $('#disp-consignment-row').show();
+          $('#disp-consignment-total').text(consignmentTotal.toFixed(2) + ' ₾');
+          $('#disp-remaining-row').hide();
+          
+          // Hide Paid row if cash is 0 (Scenario A)
+          if (cashTotal <= 0) {
+              $('#disp-paid-row').hide();
+          } else {
+              $('#disp-paid-row').show();
+          }
+      } else {
+          // Scenario C: Standard Cash/Bank only
+          $('#disp-paid-label').text('გადახდილია:');
+          $('#disp-paid-total').text(totalPaid.toFixed(2) + ' ₾');
+          $('#disp-consignment-row').hide();
+          
+          if (totalPaid > 0) {
+              $('#disp-paid-row').show();
+              $('#disp-remaining-row').show();
+              $('#disp-remaining').text(remaining.toFixed(2) + ' ₾');
+              
+              if (remaining === 0) { 
+                  $('#disp-remaining').css('color', '#28a745').text('0.00 ₾ (გადახდილია)'); 
+              } else if (remaining < 0) { 
+                  $('#disp-remaining').css('color', '#dc3545').text(remaining.toFixed(2) + ' ₾ (ზედმეტი)'); 
+              } else { 
+                  $('#disp-remaining').css('color', '#dc3545'); 
+              }
+          } else {
+              // No payments at all
+              $('#disp-paid-row').hide();
+              $('#disp-remaining-row').hide();
+          }
+      }
   }
 
   $(document).on('click', '#btn-add-payment', function() {
