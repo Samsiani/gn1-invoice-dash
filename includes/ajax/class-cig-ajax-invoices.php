@@ -504,6 +504,9 @@ class CIG_Ajax_Invoices {
                 $total = $qty * $price;
             }
 
+            // Get image URL and sanitize
+            $image = esc_url_raw($item['image'] ?? '');
+
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
             $wpdb->insert(
                 $this->table_items,
@@ -517,9 +520,10 @@ class CIG_Ajax_Invoices {
                     'total'             => $total,
                     'item_status'       => sanitize_text_field($item['status'] ?? 'none'),
                     'warranty_duration' => sanitize_text_field($item['warranty'] ?? ''),
-                    'reservation_days'  => intval($item['reservation_days'] ?? 0)
+                    'reservation_days'  => intval($item['reservation_days'] ?? 0),
+                    'image'             => $image
                 ],
-                ['%d', '%d', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%d']
+                ['%d', '%d', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%d', '%s']
             );
         }
     }

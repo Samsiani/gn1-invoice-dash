@@ -227,19 +227,20 @@ class CIG_Admin_Columns {
      * Uses CIG_Invoice_Manager for efficient SQL-based aggregation
      *
      * @since 4.0.0 Updated to use CIG_Invoice_Manager
-     * @param int $customer_id Customer ID
+     * @param int $post_id WordPress post ID of cig_customer post type
      * @return array Stats array with count, revenue, paid
      */
-    private function get_customer_stats($customer_id) {
+    private function get_customer_stats($post_id) {
         static $cache = [];
-        if (isset($cache[$customer_id])) {
-            return $cache[$customer_id];
+        if (isset($cache[$post_id])) {
+            return $cache[$post_id];
         }
 
         // Use Invoice Manager for efficient aggregation from custom tables
-        $stats = $this->invoice_manager->get_customer_stats($customer_id);
+        // Pass the WordPress post ID, which will look up the customer by tax_id
+        $stats = $this->invoice_manager->get_customer_stats_by_post_id($post_id);
 
-        $cache[$customer_id] = $stats;
+        $cache[$post_id] = $stats;
         return $stats;
     }
 
