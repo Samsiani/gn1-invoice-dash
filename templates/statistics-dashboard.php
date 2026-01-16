@@ -386,15 +386,16 @@ if (!defined('ABSPATH')) {
                             <th style="width:60px;"><?php esc_html_e('Photo', 'cig'); ?></th>
                             <th><?php esc_html_e('Product', 'cig'); ?></th>
                             <th class="sortable" data-sort="price"><?php esc_html_e('Price', 'cig'); ?></th>
-                            <th class="sortable" data-sort="stock"><?php esc_html_e('Stock', 'cig'); ?></th>
-                            <th class="sortable" data-sort="reserved"><?php esc_html_e('Reserved', 'cig'); ?></th>
+                            <th class="sortable" data-sort="stock"><?php esc_html_e('Current Stock', 'cig'); ?></th>
+                            <th class="sortable" data-sort="total_reserved"><?php esc_html_e('Reserved', 'cig'); ?></th>
+                            <th class="sortable" data-sort="total_fictive"><?php esc_html_e('Fictive', 'cig'); ?></th>
                             <th class="sortable" data-sort="total_sold"><?php esc_html_e('Total Sold', 'cig'); ?></th>
                             <th class="sortable" data-sort="total_revenue"><?php esc_html_e('Total Revenue', 'cig'); ?></th>
                         </tr>
                     </thead>
                     <tbody id="cig-product-perf-tbody">
                         <tr class="loading-row">
-                            <td colspan="7">
+                            <td colspan="8">
                                 <div class="cig-loading-spinner">
                                     <div class="spinner"></div>
                                     <p><?php esc_html_e('Loading product performance...', 'cig'); ?></p>
@@ -403,6 +404,9 @@ if (!defined('ABSPATH')) {
                         </tr>
                     </tbody>
                 </table>
+            </div>
+            <div class="cig-table-footer">
+                <div class="cig-pagination" id="cig-product-pagination"></div>
             </div>
         </div>
     </div>

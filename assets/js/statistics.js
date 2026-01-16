@@ -33,6 +33,8 @@ jQuery(function ($) {
   var productPerfFilters = { dateFrom: '', dateTo: '', search: '' };
   var productPerfData = [];
   var productPerfSort = { column: 'total_sold', order: 'desc' };
+  var productPerfPagination = { current_page: 1, total_pages: 1 };
+  var productSearchTimeout = null;
 
   // --- INITIALIZATION ---
   $(document).ready(function() {
@@ -291,18 +293,19 @@ jQuery(function ($) {
     $(document).on('click', '#cig-pp-apply-date', function() {
         productPerfFilters.dateFrom = $('#cig-pp-date-from').val();
         productPerfFilters.dateTo = $('#cig-pp-date-to').val();
-        loadProductTable();
+        productPerfPagination.current_page = 1;
+        loadProductTable(1);
     });
 
-    // Live Search with Debounce (300ms)
-    var productSearchTimeout;
+    // Live Search with Debounce (500ms)
     $(document).on('input', '#cig-pp-search', function() {
         clearTimeout(productSearchTimeout);
         var val = $(this).val();
         productSearchTimeout = setTimeout(function() {
             productPerfFilters.search = val;
-            loadProductTable();
-        }, 300);
+            productPerfPagination.current_page = 1;
+            loadProductTable(1);
+        }, 500);
     });
 
     // Sortable Headers for Product Performance Table
@@ -316,6 +319,14 @@ jQuery(function ($) {
         }
         sortProductTable();
         updateProductSortArrows();
+    });
+
+    // Product Performance Pagination
+    $(document).on('click', '#cig-product-pagination .cig-page-btn', function() {
+        if ($(this).is(':disabled') || $(this).hasClass('active')) return;
+        var page = parseInt($(this).data('page'), 10);
+        productPerfPagination.current_page = page;
+        loadProductTable(page);
     });
   }
 
@@ -451,10 +462,14 @@ jQuery(function ($) {
   /**
    * Load Product Performance Table
    * Fetches data from cig_get_product_performance_table AJAX action
+   * @param {number} page - Page number (default: 1)
    */
-  function loadProductTable() {
+  function loadProductTable(page) {
+      page = page || 1;
+      productPerfPagination.current_page = page;
+
       // Show loading state
-      $('#cig-product-perf-tbody').html('<tr class="loading-row"><td colspan="7"><div class="cig-loading-spinner"><div class="spinner"></div><p>Loading product performance...</p></div></td></tr>');
+      $('#cig-product-perf-tbody').html('<tr class="loading-row"><td colspan="8"><div class="cig-loading-spinner"><div class="spinner"></div><p>Loading product performance...</p></div></td></tr>');
 
       $.ajax({
           url: cigStats.ajax_url,
@@ -466,20 +481,26 @@ jQuery(function ($) {
               date_from: productPerfFilters.dateFrom,
               date_to: productPerfFilters.dateTo,
               search: productPerfFilters.search,
-              sort_by: productPerfSort.column,
-              sort_order: productPerfSort.order
+              page: page
           },
           success: function(res) {
               if (res.success && res.data && res.data.products) {
                   productPerfData = res.data.products;
+                  if (res.data.pagination) {
+                      productPerfPagination.current_page = res.data.pagination.current_page;
+                      productPerfPagination.total_pages = res.data.pagination.total_pages;
+                  }
                   renderProductTable(productPerfData);
+                  renderProductPagination();
                   updateProductSortArrows();
               } else {
-                  $('#cig-product-perf-tbody').html('<tr><td colspan="7" style="text-align:center; padding:20px; color:#999;">No products found</td></tr>');
+                  $('#cig-product-perf-tbody').html('<tr><td colspan="8" style="text-align:center; padding:20px; color:#999;">No products found</td></tr>');
+                  $('#cig-product-pagination').html('');
               }
           },
           error: function() {
-              $('#cig-product-perf-tbody').html('<tr><td colspan="7" style="text-align:center; padding:20px; color:#dc3545;">Error loading products</td></tr>');
+              $('#cig-product-perf-tbody').html('<tr><td colspan="8" style="text-align:center; padding:20px; color:#dc3545;">Error loading products</td></tr>');
+              $('#cig-product-pagination').html('');
           }
       });
   }
@@ -521,7 +542,7 @@ jQuery(function ($) {
    */
   function renderProductTable(products) {
       if (!products || !products.length) {
-          $('#cig-product-perf-tbody').html('<tr><td colspan="7" style="text-align:center; padding:20px; color:#999;">No products found</td></tr>');
+          $('#cig-product-perf-tbody').html('<tr><td colspan="8" style="text-align:center; padding:20px; color:#999;">No products found</td></tr>');
           return;
       }
 
@@ -541,21 +562,60 @@ jQuery(function ($) {
           html += '<tr>';
           // Photo
           html += '<td><img src="' + imgSrc + '" alt="" style="width:48px;height:48px;object-fit:contain;border:1px solid #eee;border-radius:4px;background:#fff;"></td>';
-          // Product (Name + SKU)
-          html += '<td><div><strong>' + escapeHtml(product.name || '—') + '</strong><br><small style="color:#888;">' + escapeHtml(product.sku || '—') + '</small></div></td>';
+          // Product (Name + SKU/Code)
+          html += '<td><div><strong>' + escapeHtml(product.name || '—') + '</strong><br><span style="color:#888;font-size:11px;">Code: ' + escapeHtml(product.sku || '—') + '</span></div></td>';
           // Price
           html += '<td>' + formatCurrency(product.price) + '</td>';
-          // Stock
+          // Current Stock
           html += '<td style="' + stockStyle + '">' + stockDisplay + '</td>';
-          // Reserved
-          html += '<td><span class="cig-badge badge-reserved">' + formatNumber(product.reserved) + '</span></td>';
-          // Total Sold
+          // Reserved (In period)
+          html += '<td><span class="cig-badge badge-reserved">' + formatNumber(product.total_reserved) + '</span></td>';
+          // Fictive (In period - NEW Column)
+          html += '<td><span class="cig-badge badge-canceled">' + formatNumber(product.total_fictive) + '</span></td>';
+          // Total Sold (In period)
           html += '<td><span class="cig-badge badge-sold">' + formatNumber(product.total_sold) + '</span></td>';
-          // Total Revenue
+          // Total Revenue (In period)
           html += '<td><strong style="color:#28a745;">' + formatCurrency(product.total_revenue) + '</strong></td>';
           html += '</tr>';
       });
       $('#cig-product-perf-tbody').html(html);
+  }
+
+  /**
+   * Render Product Performance Pagination
+   */
+  function renderProductPagination() {
+      var $container = $('#cig-product-pagination');
+      var cp = productPerfPagination.current_page;
+      var tp = productPerfPagination.total_pages;
+
+      if (tp <= 1) {
+          $container.html('');
+          return;
+      }
+
+      var html = '<button class="cig-page-btn" data-page="' + (cp - 1) + '" ' + (cp <= 1 ? 'disabled' : '') + '>« Prev</button>';
+      
+      var startPage = Math.max(1, cp - 2);
+      var endPage = Math.min(tp, cp + 2);
+      
+      if (startPage > 1) {
+          html += '<button class="cig-page-btn" data-page="1">1</button>';
+          if (startPage > 2) html += '<span style="padding:0 5px;color:#999;">...</span>';
+      }
+      
+      for (var i = startPage; i <= endPage; i++) {
+          html += '<button class="cig-page-btn ' + (i === cp ? 'active' : '') + '" data-page="' + i + '">' + i + '</button>';
+      }
+      
+      if (endPage < tp) {
+          if (endPage < tp - 1) html += '<span style="padding:0 5px;color:#999;">...</span>';
+          html += '<button class="cig-page-btn" data-page="' + tp + '">' + tp + '</button>';
+      }
+      
+      html += '<button class="cig-page-btn" data-page="' + (cp + 1) + '" ' + (cp >= tp ? 'disabled' : '') + '>Next »</button>';
+      
+      $container.html(html);
   }
 
   // --- OVERVIEW LOGIC ---
