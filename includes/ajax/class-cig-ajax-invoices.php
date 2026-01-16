@@ -213,7 +213,7 @@ class CIG_Ajax_Invoices {
             }
         }
         
-        // Total paid for legacy purposes (but DB will store real_cash_paid)
+        // Total paid for DB storage (excludes consignment - used in manager_data below)
         $paid = $real_cash_paid;
 
         // AUTO-STATUS LOGIC:
