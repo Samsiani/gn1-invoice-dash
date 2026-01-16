@@ -182,7 +182,7 @@ class CIG_Ajax_Statistics {
         }
 
         $sql_cashflow = "SELECT 
-            COALESCE(SUM(p.amount), 0) as total_paid,
+            COALESCE(SUM(CASE WHEN p.method != 'consignment' THEN p.amount ELSE 0 END), 0) as total_paid,
             COALESCE(SUM(CASE WHEN p.method = 'company_transfer' THEN p.amount ELSE 0 END), 0) as total_company_transfer,
             COALESCE(SUM(CASE WHEN p.method = 'cash' THEN p.amount ELSE 0 END), 0) as total_cash,
             COALESCE(SUM(CASE WHEN p.method = 'consignment' THEN p.amount ELSE 0 END), 0) as total_consignment,

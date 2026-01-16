@@ -597,6 +597,10 @@ class CIG_Invoice_Manager {
 
     /**
      * Recalculate paid_amount from payments table
+     * 
+     * IMPORTANT: Excludes consignment payments from the paid total.
+     * Consignment payments are recorded in the payments table for history,
+     * but they do not count as actual cash received until the method is changed.
      *
      * @param int $invoice_id Invoice ID
      * @return void
@@ -604,11 +608,12 @@ class CIG_Invoice_Manager {
     private function recalculate_paid_amount($invoice_id) {
         global $wpdb;
 
-        // Sum all payments for this invoice
+        // Sum all payments for this invoice, EXCLUDING consignment
+        // Consignment payments are tracked but don't count as cash received
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $total_paid = $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT COALESCE(SUM(amount), 0) FROM {$this->table_payments} WHERE invoice_id = %d",
+                "SELECT COALESCE(SUM(amount), 0) FROM {$this->table_payments} WHERE invoice_id = %d AND method != 'consignment'",
                 $invoice_id
             )
         );

@@ -199,13 +199,27 @@ class CIG_Ajax_Invoices {
         
         // 1. Determine Status based on Payment
         $hist = $this->process_payment_history($d['payment']['history'] ?? []);
-        $paid = 0; 
+        
+        // Calculate two totals: real cash paid (excluding consignment) and consignment total
+        $real_cash_paid = 0;
+        $consignment_total = 0;
         foreach ($hist as $h) {
-            $paid += floatval($h['amount'] ?? 0);
+            $amount = floatval($h['amount'] ?? 0);
+            $method = strtolower($h['method'] ?? '');
+            if ($method === 'consignment') {
+                $consignment_total += $amount;
+            } else {
+                $real_cash_paid += $amount;
+            }
         }
+        
+        // Total paid for DB storage (excludes consignment - used in manager_data below)
+        $paid = $real_cash_paid;
 
         // AUTO-STATUS LOGIC:
-        $st = ($paid > 0) ? 'standard' : 'fictive';
+        // If real cash paid > 0 OR consignment exists, it's a Standard Sale (item left stock)
+        // Only mark as fictive if no payments of any kind
+        $st = ($real_cash_paid > 0 || $consignment_total > 0) ? 'standard' : 'fictive';
 
         // 2. Process Items & Enforce Item Statuses
         $items = array_filter((array)($d['items'] ?? []), function($r) { 
