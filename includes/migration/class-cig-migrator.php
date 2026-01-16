@@ -61,6 +61,7 @@ class CIG_Migrator {
     public function render_migration_page() {
         $is_complete = self::is_migration_complete();
         $results = get_option(self::MIGRATION_RESULTS_OPTION);
+        $nonce = wp_create_nonce('cig_manual_migration');
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('Database Migration', 'cig'); ?></h1>
@@ -100,8 +101,13 @@ class CIG_Migrator {
                 
                 <h3><?php esc_html_e('Manual Migration', 'cig'); ?></h3>
                 <p><?php esc_html_e('Use this button to manually trigger the migration from postmeta to custom tables. This will re-run the migration even if it was previously completed.', 'cig'); ?></p>
+                <p class="description" style="color: #d63638;">
+                    <strong><?php esc_html_e('Warning:', 'cig'); ?></strong>
+                    <?php esc_html_e('Do not run this while the system is actively being used. Existing data in custom tables will be updated based on postmeta data.', 'cig'); ?>
+                </p>
                 
                 <p>
+                    <input type="hidden" id="cig-migration-nonce" value="<?php echo esc_attr($nonce); ?>">
                     <button type="button" id="cig-start-migration" class="button button-primary">
                         <?php esc_html_e('Start Migration', 'cig'); ?>
                     </button>
@@ -122,8 +128,11 @@ class CIG_Migrator {
                 var $spinner = $('#cig-migration-spinner');
                 var $results = $('#cig-migration-results');
                 var $message = $('#cig-migration-message');
+                var nonce = $('#cig-migration-nonce').val();
                 
-                if (!confirm('<?php echo esc_js(__('Are you sure you want to run the migration? This will reset the migration flag and re-migrate all invoices.', 'cig')); ?>')) {
+                var confirmMessage = '<?php echo esc_js(__('WARNING: This will reset the migration flag and re-migrate all invoices from postmeta to custom tables. Do not run this while users are actively creating or editing invoices. Are you sure you want to continue?', 'cig')); ?>';
+                
+                if (!confirm(confirmMessage)) {
                     return;
                 }
                 
@@ -136,7 +145,7 @@ class CIG_Migrator {
                     type: 'POST',
                     data: {
                         action: 'cig_manual_migration',
-                        nonce: '<?php echo esc_js(wp_create_nonce('cig_manual_migration')); ?>'
+                        nonce: nonce
                     },
                     success: function(response) {
                         $spinner.removeClass('is-active');
