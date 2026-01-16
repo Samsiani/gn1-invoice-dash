@@ -355,8 +355,60 @@ if (!defined('ABSPATH')) {
     </div>
 
     <div id="cig-tab-product" class="cig-tab-content" style="display:none;">
-        <div class="cig-product-search-hero">
-            <input type="text" id="cig-product-insight-search" class="cig-hero-input" placeholder="<?php esc_attr_e('Type product name or code...', 'cig'); ?>">
+        <!-- Top Selling Products Filter Bar -->
+        <div class="cig-stats-filters-bar" id="cig-top-products-filters">
+            <div class="cig-filters-row">
+                <div class="cig-filter-group">
+                    <label><?php esc_html_e('Date Range:', 'cig'); ?></label>
+                    <div class="cig-date-range">
+                        <input type="date" id="cig-tp-date-from" class="cig-date-input">
+                        <span>-</span>
+                        <input type="date" id="cig-tp-date-to" class="cig-date-input">
+                    </div>
+                </div>
+                <div class="cig-filter-group">
+                    <label><?php esc_html_e('Search:', 'cig'); ?></label>
+                    <input type="text" id="cig-tp-search" class="cig-search-input" placeholder="<?php esc_attr_e('Product Name or SKU...', 'cig'); ?>" style="min-width:200px;">
+                </div>
+                <div class="cig-filter-group">
+                    <button type="button" id="cig-tp-apply-filters" class="button button-primary"><?php esc_html_e('Apply', 'cig'); ?></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Selling Products Table -->
+        <div class="cig-table-card" id="cig-top-products-panel">
+            <div class="cig-section-header cig-users-header-inline">
+                <h2><?php esc_html_e('Top Selling Products', 'cig'); ?></h2>
+            </div>
+            <div class="cig-table-container">
+                <table class="cig-stats-table" id="cig-top-products-table">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e('Product Name', 'cig'); ?></th>
+                            <th><?php esc_html_e('SKU', 'cig'); ?></th>
+                            <th><?php esc_html_e('Price', 'cig'); ?></th>
+                            <th><?php esc_html_e('Sold Qty', 'cig'); ?></th>
+                            <th><?php esc_html_e('Total Revenue', 'cig'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cig-top-products-tbody">
+                        <tr class="loading-row">
+                            <td colspan="5">
+                                <div class="cig-loading-spinner">
+                                    <div class="spinner"></div>
+                                    <p><?php esc_html_e('Loading top products...', 'cig'); ?></p>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Legacy Product Insight Section (Hidden by default, shown when searching specific product) -->
+        <div class="cig-product-search-hero" style="margin-top: 30px;">
+            <input type="text" id="cig-product-insight-search" class="cig-hero-input" placeholder="<?php esc_attr_e('Search specific product for detailed insight...', 'cig'); ?>">
             <span class="dashicons dashicons-search cig-hero-icon"></span>
         </div>
 
