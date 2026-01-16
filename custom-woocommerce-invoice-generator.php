@@ -228,8 +228,10 @@ final class CIG_Invoice_Generator {
         // Create custom tables using DB Installer (2.0.0)
         CIG_DB_Installer::install();
         
-        // Also run legacy database creation for backward compatibility
-        CIG_Database::create_tables();
+        // Run legacy database creation only if tables don't exist (backward compatibility)
+        if (!CIG_Database::tables_exist()) {
+            CIG_Database::create_tables();
+        }
         
         update_option('cig_version', CIG_VERSION, false);
         flush_rewrite_rules();

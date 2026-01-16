@@ -88,7 +88,7 @@ class CIG_DB_Installer {
 
         $sql = "CREATE TABLE $table_name (
             id bigint(20) NOT NULL AUTO_INCREMENT,
-            invoice_number varchar(50) NOT NULL DEFAULT '',
+            invoice_number varchar(50) NOT NULL,
             customer_id bigint(20) DEFAULT 0,
             status varchar(20) DEFAULT 'fictive',
             lifecycle_status varchar(20) DEFAULT 'unfinished',
@@ -223,6 +223,9 @@ class CIG_DB_Installer {
      * Drop all custom tables (for uninstall)
      * Tables are dropped in reverse order to respect foreign key constraints
      *
+     * @warning This method permanently deletes all plugin data and cannot be undone.
+     *          Only call this during complete plugin uninstallation.
+     *
      * @return void
      */
     public static function uninstall() {
@@ -237,8 +240,9 @@ class CIG_DB_Installer {
         ];
 
         foreach ($tables as $table) {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange
-            $wpdb->query("DROP TABLE IF EXISTS `$table`");
+            // Table names are constructed from $wpdb->prefix which is safe
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $wpdb->query("DROP TABLE IF EXISTS `{$table}`");
         }
 
         delete_option('cig_db_version');
