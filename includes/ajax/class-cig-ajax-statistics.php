@@ -13,6 +13,9 @@ if (!defined('ABSPATH')) exit;
 class CIG_Ajax_Statistics {
     private $security;
 
+    /** @var int Maximum number of invoices to return in drill-down queries */
+    private const MAX_DRILL_DOWN_RESULTS = 200;
+
     /** @var string Table names */
     private $table_invoices;
     private $table_items;
@@ -466,8 +469,12 @@ class CIG_Ajax_Statistics {
 
     /**
      * Get invoices by filters using raw SQL on custom tables
-     * Filters by sale_date and joins with cig_customers for names
-     * Aggregates payment methods from cig_payments
+     * 
+     * IMPORTANT: Date filtering logic depends on context:
+     * - When a specific payment_method is selected (cash flow drill-down):
+     *   Date range applies to cig_payments.date (when payment was received)
+     * - When no payment method is selected (general overview / reserved_invoices):
+     *   Date range applies to cig_invoices.sale_date (revenue reporting)
      */
     public function get_invoices_by_filters() {
         $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
@@ -492,7 +499,10 @@ class CIG_Ajax_Statistics {
             'other' => __('სხვა', 'cig')
         ];
 
-        // Build WHERE clause - filter by sale_date
+        // Determine if we're filtering by payment method (cash flow drill-down)
+        $is_payment_method_filter = $mf && $mf !== 'all' && $mf !== 'reserved_invoices';
+
+        // Build WHERE clause
         $where = "WHERE 1=1";
         $params = [];
         
@@ -503,32 +513,74 @@ class CIG_Ajax_Statistics {
         } elseif ($status !== 'all') {
             $where .= " AND (i.status = 'standard' OR i.status IS NULL)";
         }
-        
-        // Filter by sale_date (NOT created_at)
-        if ($date_from) { 
-            $where .= " AND i.sale_date >= %s"; 
-            $params[] = $date_from . ' 00:00:00'; 
-        }
-        if ($date_to) { 
-            $where .= " AND i.sale_date <= %s"; 
-            $params[] = $date_to . ' 23:59:59'; 
-        }
 
-        // Main query: Join with customers for names
-        $sql = "SELECT 
-            i.id,
-            i.invoice_number,
-            i.total_amount,
-            i.paid_amount,
-            i.status,
-            i.sale_date,
-            i.author_id,
-            c.name as customer_name
-            FROM {$this->table_invoices} i
-            LEFT JOIN {$this->table_customers} c ON i.customer_id = c.id
-            {$where}
-            ORDER BY i.sale_date DESC
-            LIMIT 200";
+        if ($is_payment_method_filter) {
+            // CASH FLOW DRILL-DOWN: Filter by payment date and method
+            // Find invoices that have a matching payment within the date range
+            $payment_where = "";
+            $payment_params = [];
+            
+            $payment_where .= " AND p.method = %s AND p.amount > 0.001";
+            $payment_params[] = $mf;
+            
+            if ($date_from) { 
+                $payment_where .= " AND p.date >= %s"; 
+                $payment_params[] = $date_from . ' 00:00:00'; 
+            }
+            if ($date_to) { 
+                $payment_where .= " AND p.date <= %s"; 
+                $payment_params[] = $date_to . ' 23:59:59'; 
+            }
+            
+            // Use EXISTS subquery to find invoices with matching payments
+            $where .= " AND EXISTS (
+                SELECT 1 FROM {$this->table_payments} p 
+                WHERE p.invoice_id = i.id {$payment_where}
+            )";
+            $params = array_merge($params, $payment_params);
+            
+            // Main query: Join with customers for names
+            $sql = "SELECT 
+                i.id,
+                i.invoice_number,
+                i.total_amount,
+                i.paid_amount,
+                i.status,
+                i.sale_date,
+                i.author_id,
+                c.name as customer_name
+                FROM {$this->table_invoices} i
+                LEFT JOIN {$this->table_customers} c ON i.customer_id = c.id
+                {$where}
+                ORDER BY i.sale_date DESC
+                LIMIT " . self::MAX_DRILL_DOWN_RESULTS;
+        } else {
+            // GENERAL OVERVIEW / RESERVED INVOICES: Filter by sale_date
+            if ($date_from) { 
+                $where .= " AND i.sale_date >= %s"; 
+                $params[] = $date_from . ' 00:00:00'; 
+            }
+            if ($date_to) { 
+                $where .= " AND i.sale_date <= %s"; 
+                $params[] = $date_to . ' 23:59:59'; 
+            }
+
+            // Main query: Join with customers for names
+            $sql = "SELECT 
+                i.id,
+                i.invoice_number,
+                i.total_amount,
+                i.paid_amount,
+                i.status,
+                i.sale_date,
+                i.author_id,
+                c.name as customer_name
+                FROM {$this->table_invoices} i
+                LEFT JOIN {$this->table_customers} c ON i.customer_id = c.id
+                {$where}
+                ORDER BY i.sale_date DESC
+                LIMIT " . self::MAX_DRILL_DOWN_RESULTS;
+        }
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
         $invoices = $wpdb->get_results(
@@ -563,7 +615,6 @@ class CIG_Ajax_Statistics {
             );
 
             $inv_m = [];
-            $has_target = false;
             $payment_details = [];
 
             foreach ($payments as $p) {
@@ -571,30 +622,36 @@ class CIG_Ajax_Statistics {
                 $amt = (float)$p['amount'];
                 $pay_date = $p['date'] ?? '';
 
-                // Payment method filter
-                if ($mf && $mf !== 'all' && $mf !== 'reserved_invoices') {
-                    if ($m === $mf && $amt > 0.001) $has_target = true;
-                }
-
                 $inv_m[] = $method_labels[$m] ?? $m;
 
                 // Collect individual payment details for breakdown
                 if ($amt > 0.001) {
+                    // Check if this payment matches the filter (for highlighting)
+                    $matches_filter = false;
+                    if ($is_payment_method_filter && $m === $mf) {
+                        $pay_ts = $pay_date ? strtotime($pay_date) : 0;
+                        $from_ts = $date_from ? strtotime($date_from . ' 00:00:00') : 0;
+                        $to_ts = $date_to ? strtotime($date_to . ' 23:59:59') : PHP_INT_MAX;
+                        if ($pay_ts >= $from_ts && $pay_ts <= $to_ts) {
+                            $matches_filter = true;
+                        }
+                    }
+                    
                     $payment_details[] = [
                         'amount' => $amt,
                         'date' => $pay_date ? substr($pay_date, 0, 10) : '',
-                        'method' => $method_labels[$m] ?? $m
+                        'method' => $method_labels[$m] ?? $m,
+                        'matches_filter' => $matches_filter
                     ];
                 }
             }
 
-            // Filter validation: if specific method is requested but not found
-            if ($mf && $mf !== 'all' && $mf !== 'reserved_invoices' && !$has_target) continue;
-
             // Build detailed payment breakdown HTML
+            // Highlight payments that match the filter criteria
             $bd = '';
             foreach ($payment_details as $pd_item) {
-                $bd .= '<div style="font-size:11px;color:#333;margin-bottom:2px;">';
+                $highlight_style = $pd_item['matches_filter'] ? 'background:#fffde7;padding:2px 4px;border-radius:3px;font-weight:600;' : '';
+                $bd .= '<div style="font-size:11px;color:#333;margin-bottom:2px;' . $highlight_style . '">';
                 $bd .= number_format($pd_item['amount'], 2) . ' ₾';
                 $has_date = !empty($pd_item['date']);
                 $has_method = !empty($pd_item['method']);
@@ -648,14 +705,29 @@ class CIG_Ajax_Statistics {
     /**
      * Legacy fallback for get_invoices_by_filters using WP_Query
      * Used when custom tables don't exist yet
+     * 
+     * IMPORTANT: Date filtering logic depends on context:
+     * - When a specific payment_method is selected: filter by payment date
+     * - When no payment method is selected: filter by post date
      */
     private function get_invoices_by_filters_legacy() {
         $status = sanitize_text_field($_POST['status'] ?? 'standard');
         $mf = sanitize_text_field($_POST['payment_method'] ?? '');
-        $args = ['post_type'=>'invoice', 'post_status'=>'publish', 'posts_per_page'=>200, 'orderby'=>'date', 'order'=>'DESC'];
+        $date_from = sanitize_text_field($_POST['date_from'] ?? '');
+        $date_to = sanitize_text_field($_POST['date_to'] ?? '');
         
-        if (!empty($_POST['date_from'])) {
-            $args['date_query'] = [['after'=>$_POST['date_from'].' 00:00:00', 'before'=>$_POST['date_to'].' 23:59:59', 'inclusive'=>true]];
+        // Determine if we're filtering by payment method (cash flow drill-down)
+        $is_payment_method_filter = $mf && $mf !== 'all' && $mf !== 'reserved_invoices';
+        
+        // Use a reasonable limit to avoid performance issues
+        // When filtering by payment method, we need to scan more posts since we filter in PHP
+        $query_limit = $is_payment_method_filter ? 1000 : self::MAX_DRILL_DOWN_RESULTS;
+        $args = ['post_type'=>'invoice', 'post_status'=>'publish', 'posts_per_page'=>$query_limit, 'orderby'=>'date', 'order'=>'DESC'];
+        
+        // Only apply date_query when NOT filtering by payment method
+        // When filtering by payment method, we need to check payment dates, not post dates
+        if (!$is_payment_method_filter && $date_from) {
+            $args['date_query'] = [['after'=>$date_from.' 00:00:00', 'before'=>$date_to.' 23:59:59', 'inclusive'=>true]];
         }
         
         $mq = $this->get_status_meta_query_legacy($status); 
@@ -669,8 +741,15 @@ class CIG_Ajax_Statistics {
             'other'=>__('სხვა','cig')
         ];
         
+        // Parse date range for payment filtering
+        $from_ts = $date_from ? strtotime($date_from . ' 00:00:00') : 0;
+        $to_ts = $date_to ? strtotime($date_to . ' 23:59:59') : PHP_INT_MAX;
+        
         $rows=[];
+        $count = 0;
         foreach((new WP_Query($args))->posts as $p) {
+            if ($count >= self::MAX_DRILL_DOWN_RESULTS) break;
+            
             $id=$p->ID;
             
             if ($mf === 'reserved_invoices') {
@@ -686,7 +765,8 @@ class CIG_Ajax_Statistics {
             }
 
             $hist=get_post_meta($id,'_cig_payment_history',true);
-            $inv_m=[]; $has_target=false;
+            $inv_m=[]; 
+            $has_matching_payment = false;
             $payment_details = [];
             
             if(is_array($hist)) {
@@ -695,27 +775,37 @@ class CIG_Ajax_Statistics {
                     $amt=(float)$h['amount'];
                     $pay_date = $h['date'] ?? '';
                     
-                    if($mf && $mf !== 'all' && $mf !== 'reserved_invoices') {
-                        if($m===$mf && $amt>0.001) $has_target=true;
-                    }
-                    
                     $inv_m[]=$method_labels[$m]??$m;
                     
                     if ($amt > 0.001) {
+                        // Check if this payment matches the filter
+                        $matches_filter = false;
+                        if ($is_payment_method_filter && $m === $mf) {
+                            $pay_ts = $pay_date ? strtotime($pay_date) : 0;
+                            if ($pay_ts >= $from_ts && $pay_ts <= $to_ts) {
+                                $has_matching_payment = true;
+                                $matches_filter = true;
+                            }
+                        }
+                        
                         $payment_details[] = [
                             'amount' => $amt,
                             'date' => $pay_date,
-                            'method' => $method_labels[$m] ?? $m
+                            'method' => $method_labels[$m] ?? $m,
+                            'matches_filter' => $matches_filter
                         ];
                     }
                 }
             }
 
-            if($mf && $mf !== 'all' && $mf !== 'reserved_invoices' && !$has_target) continue;
+            // For payment method filter, only include invoices with matching payments in date range
+            if ($is_payment_method_filter && !$has_matching_payment) continue;
             
+            // Build detailed payment breakdown HTML with highlighting
             $bd=''; 
             foreach($payment_details as $pd_item) {
-                $bd .= '<div style="font-size:11px;color:#333;margin-bottom:2px;">';
+                $highlight_style = $pd_item['matches_filter'] ? 'background:#fffde7;padding:2px 4px;border-radius:3px;font-weight:600;' : '';
+                $bd .= '<div style="font-size:11px;color:#333;margin-bottom:2px;' . $highlight_style . '">';
                 $bd .= number_format($pd_item['amount'], 2) . ' ₾';
                 $has_date = !empty($pd_item['date']);
                 $has_method = !empty($pd_item['method']);
@@ -754,6 +844,7 @@ class CIG_Ajax_Statistics {
                 'view_url'=>get_permalink($id), 
                 'edit_url'=>add_query_arg('edit','1',get_permalink($id))
             ];
+            $count++;
         }
         wp_send_json_success(['invoices'=>$rows]);
     }
