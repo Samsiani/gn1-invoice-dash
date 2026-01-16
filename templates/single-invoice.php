@@ -242,15 +242,27 @@ $payment_methods_map = [
   </table>
 
   <?php
-  // Calculate Payment Totals from History
+  // Calculate Payment Totals from History - separate cash vs consignment
   $total_paid = 0;
+  $cash_total = 0;
+  $consignment_total = 0;
   if (!empty($payment_history)) {
       foreach ($payment_history as $pay) {
-          $total_paid += floatval($pay['amount'] ?? 0);
+          $amount = floatval($pay['amount'] ?? 0);
+          $method = strtolower($pay['method'] ?? '');
+          $total_paid += $amount;
+          if ($method === 'consignment') {
+              $consignment_total += $amount;
+          } else {
+              $cash_total += $amount;
+          }
       }
   }
   $remaining = $grand - $total_paid;
   if (abs($remaining) < 0.001) $remaining = 0;
+  
+  // Check if consignment payment exists
+  $has_consignment = $consignment_total > 0;
   ?>
 
   <div class="invoice-summary">
@@ -261,7 +273,22 @@ $payment_methods_map = [
             <td id="grand-total"><?php echo number_format($grand,2,'.','') . '&nbsp;&#8382;'; ?></td>
         </tr>
         
-        <?php if ($total_paid > 0): ?>
+        <?php if ($has_consignment): ?>
+            <?php // Scenario A or B: Consignment exists ?>
+            <?php if ($cash_total > 0): ?>
+                <?php // Scenario B: Mixed - Cash + Consignment ?>
+                <tr>
+                    <td style="font-size:13px; color:#28a745;"><?php esc_html_e('გადახდილია (Cash)', 'cig'); ?></td>
+                    <td style="font-size:13px; font-weight:bold; color:#28a745;"><?php echo number_format($cash_total, 2, '.', '') . '&nbsp;&#8382;'; ?></td>
+                </tr>
+            <?php endif; ?>
+            <tr>
+                <td style="font-size:13px; color:#6c757d;"><?php esc_html_e('კონსიგნაცია', 'cig'); ?></td>
+                <td style="font-size:13px; font-weight:bold; color:#6c757d;"><?php echo number_format($consignment_total, 2, '.', '') . '&nbsp;&#8382;'; ?></td>
+            </tr>
+            <?php // HIDE "Remaining/Due" row when consignment is present ?>
+        <?php elseif ($total_paid > 0): ?>
+            <?php // Scenario C: Standard Cash/Bank only ?>
             <tr>
                 <td style="font-size:13px; color:#28a745;"><?php esc_html_e('გადახდილია', 'cig'); ?></td>
                 <td style="font-size:13px; font-weight:bold; color:#28a745;"><?php echo number_format($total_paid, 2, '.', '') . '&nbsp;&#8382;'; ?></td>

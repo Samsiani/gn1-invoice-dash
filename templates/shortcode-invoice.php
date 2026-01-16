@@ -167,11 +167,15 @@ $current_user = wp_get_current_user();
                       <span style="color:#666;"><?php esc_html_e('სულ:', 'cig'); ?></span> 
                       <strong id="disp-grand-total">0.00</strong>
                   </div>
-                  <div style="background:#e8f5e9; padding:5px 10px; border-radius:4px; border:1px solid #c3e6cb;">
-                      <span style="color:#155724;"><?php esc_html_e('გადახდილი:', 'cig'); ?></span> 
+                  <div id="disp-paid-row" style="background:#e8f5e9; padding:5px 10px; border-radius:4px; border:1px solid #c3e6cb;">
+                      <span id="disp-paid-label" style="color:#155724;"><?php esc_html_e('გადახდილი:', 'cig'); ?></span> 
                       <strong id="disp-paid-total" style="color:#155724;">0.00</strong>
                   </div>
-                  <div style="background:#fff5f5; padding:5px 10px; border-radius:4px; border:1px solid #f5c6cb;">
+                  <div id="disp-consignment-row" style="background:#f0f0f0; padding:5px 10px; border-radius:4px; border:1px solid #ccc; display:none;">
+                      <span style="color:#6c757d;"><?php esc_html_e('კონსიგნაცია:', 'cig'); ?></span> 
+                      <strong id="disp-consignment-total" style="color:#6c757d;">0.00</strong>
+                  </div>
+                  <div id="disp-remaining-row" style="background:#fff5f5; padding:5px 10px; border-radius:4px; border:1px solid #f5c6cb;">
                       <span style="color:#721c24;"><?php esc_html_e('დარჩენილი:', 'cig'); ?></span> 
                       <strong id="disp-remaining" style="color:#721c24;">0.00</strong>
                   </div>
