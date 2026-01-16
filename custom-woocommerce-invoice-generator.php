@@ -90,6 +90,9 @@ final class CIG_Invoice_Generator {
     
     // Invoice Manager (4.0.0)
     public $invoice_manager;
+    
+    // Migrator (4.0.0)
+    public $migrator;
 
     /**
      * Get singleton instance
@@ -222,6 +225,9 @@ final class CIG_Invoice_Generator {
         
         // Init User Restrictions
         $this->user_restrictions = new CIG_User_Restrictions();
+        
+        // Init Migrator (4.0.0) - handles admin notices for migration
+        $this->migrator = new CIG_Migrator();
     }
 
     /**
@@ -239,6 +245,11 @@ final class CIG_Invoice_Generator {
         if (!CIG_Database::tables_exist()) {
             CIG_Database::create_tables();
         }
+        
+        // Run data migration from v1 (postmeta) to v2 (custom tables)
+        // Use existing migrator instance if available, otherwise create new one
+        $migrator = isset($this->migrator) ? $this->migrator : new CIG_Migrator();
+        $migrator->migrate_v1_to_v2();
         
         update_option('cig_version', CIG_VERSION, false);
         flush_rewrite_rules();
