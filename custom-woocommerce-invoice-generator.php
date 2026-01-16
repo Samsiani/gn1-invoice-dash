@@ -87,6 +87,9 @@ final class CIG_Invoice_Generator {
     
     // Services (4.0.0)
     public $invoice_service;
+    
+    // Invoice Manager (4.0.0)
+    public $invoice_manager;
 
     /**
      * Get singleton instance
@@ -151,6 +154,7 @@ final class CIG_Invoice_Generator {
         require_once CIG_INCLUDES_DIR . 'dto/class-cig-invoice-item-dto.php';
         require_once CIG_INCLUDES_DIR . 'services/class-cig-invoice-service.php';
         require_once CIG_INCLUDES_DIR . 'migration/class-cig-migrator.php';
+        require_once CIG_INCLUDES_DIR . 'class-cig-invoice-manager.php';
         
         // AJAX Handlers
         require_once CIG_INCLUDES_DIR . 'ajax/class-cig-ajax-invoices.php';
@@ -197,6 +201,9 @@ final class CIG_Invoice_Generator {
         
         // Services (4.0.0)
         $this->invoice_service = new CIG_Invoice_Service();
+        
+        // Invoice Manager (4.0.0)
+        $this->invoice_manager = CIG_Invoice_Manager::instance();
         
         // Initialize AJAX Handlers
         new CIG_Ajax_Invoices($this->invoice, $this->stock, $this->validator, $this->security, $this->cache);

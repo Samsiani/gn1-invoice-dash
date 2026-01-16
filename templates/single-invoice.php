@@ -27,35 +27,40 @@ $bank2_account= $settings['bank2_account'] ?? '';
 $director_name= $settings['director_name'] ?? '';
 $signature_img= $settings['director_signature'] ?? '';
 
-$invoice_number = get_post_meta($invoice_id,'_cig_invoice_number',true);
-$buyer = [
-  'name'=>get_post_meta($invoice_id,'_cig_buyer_name',true),
-  'tax_id'=>get_post_meta($invoice_id,'_cig_buyer_tax_id',true),
-  'address'=>get_post_meta($invoice_id,'_cig_buyer_address',true),
-  'phone'=>get_post_meta($invoice_id,'_cig_buyer_phone',true),
-  'email'=>get_post_meta($invoice_id,'_cig_buyer_email',true),
-];
-$items = get_post_meta($invoice_id,'_cig_items',true);
-$items = is_array($items) ? $items : [];
+// Get invoice data from CIG_Invoice_Manager (uses custom tables with fallback to post meta)
+$invoice_manager = CIG_Invoice_Manager::instance();
+$invoice_data = $invoice_manager->get_invoice_by_post_id($invoice_id);
+$invoice = $invoice_data['invoice'] ?? [];
+$items = $invoice_data['items'] ?? [];
+$payments = $invoice_data['payments'] ?? [];
+$customer = $invoice_data['customer'] ?? [];
 
-// Payment Data
-$payment_history = get_post_meta($invoice_id, '_cig_payment_history', true);
-if (!is_array($payment_history)) $payment_history = [];
+$invoice_number = $invoice['invoice_number'] ?? '';
+$buyer = [
+  'name'    => $customer['name'] ?? '',
+  'tax_id'  => $customer['tax_id'] ?? '',
+  'address' => $customer['address'] ?? '',
+  'phone'   => $customer['phone'] ?? '',
+  'email'   => $customer['email'] ?? '',
+];
+
+// Payment History from cig_payments table
+$payment_history = $payments;
 
 // General Note
-$general_note = get_post_meta($invoice_id, '_cig_general_note', true);
+$general_note = $invoice['general_note'] ?? '';
 
 $current_user = wp_get_current_user();
 $can_edit = current_user_can('manage_woocommerce');
 $can_view_payments = $can_edit || current_user_can('read');
 
 // Get statuses
-$current_status = get_post_meta($invoice_id, '_cig_invoice_status', true) ?: 'standard';
-$is_rs_uploaded = get_post_meta($invoice_id, '_cig_rs_uploaded', true) === 'yes';
-$lifecycle      = get_post_meta($invoice_id, '_cig_lifecycle_status', true) ?: 'unfinished';
+$current_status = $invoice['status'] ?? 'standard';
+$is_rs_uploaded = !empty($invoice['is_rs_uploaded']);
+$lifecycle      = $invoice['lifecycle_status'] ?? 'unfinished';
 
-// Dates logic
-$created_date = get_the_date('Y-m-d H:i', $invoice_id);
+// Dates logic - use sale_date if available, fallback to created_at or post dates
+$created_date = !empty($invoice['created_at']) ? date('Y-m-d H:i', strtotime($invoice['created_at'])) : get_the_date('Y-m-d H:i', $invoice_id);
 $modified_date = get_the_modified_date('Y-m-d H:i', $invoice_id);
 $is_updated = ($created_date !== $modified_date);
 
@@ -168,19 +173,20 @@ $payment_methods_map = [
       $grand = 0;
       foreach ($items as $idx=>$row):
         $n=$idx+1;
-        $name=$row['name'] ?? '';
+        // Support both custom table field names and legacy field names
+        $name=$row['product_name'] ?? $row['name'] ?? '';
         $brand=$row['brand'] ?? '';
         $sku=$row['sku'] ?? '';
         $desc=$row['desc'] ?? '';
         $image=$row['image'] ?? '';
-        $qty=floatval($row['qty'] ?? 0);
+        $qty=floatval($row['quantity'] ?? $row['qty'] ?? 0);
         $price=floatval($row['price'] ?? 0);
         $total=floatval($row['total'] ?? ($qty*$price));
         
         // --- STATUS LOGIC FOR VIEW ---
-        $status=$row['status'] ?? 'none';
+        $status=$row['item_status'] ?? $row['status'] ?? 'none';
         $reservation_days=$row['reservation_days'] ?? 0;
-        $warranty_key=$row['warranty'] ?? '';
+        $warranty_key=$row['warranty_duration'] ?? $row['warranty'] ?? '';
         
         if ($status !== 'canceled') {
             $grand += $total;

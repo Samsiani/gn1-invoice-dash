@@ -18,29 +18,59 @@ if (!$post_obj || $post_obj->post_type !== 'invoice') {
     wp_die('Invalid invoice.');
 }
 
+// Get invoice data from CIG_Invoice_Manager (uses custom tables with fallback to post meta)
+$invoice_manager = CIG_Invoice_Manager::instance();
+$invoice_data = $invoice_manager->get_invoice_by_post_id($post_id);
+$invoice = $invoice_data['invoice'] ?? [];
+$items_raw = $invoice_data['items'] ?? [];
+$payments_raw = $invoice_data['payments'] ?? [];
+$customer = $invoice_data['customer'] ?? [];
+
 // Retrieve Meta Data
-$invoice_number = get_post_meta($post_id, '_cig_invoice_number', true);
-$status         = get_post_meta($post_id, '_cig_invoice_status', true) ?: 'standard';
-$lifecycle      = get_post_meta($post_id, '_cig_lifecycle_status', true) ?: 'unfinished';
-$general_note   = get_post_meta($post_id, '_cig_general_note', true); // NEW
+$invoice_number = $invoice['invoice_number'] ?? '';
+$status         = $invoice['status'] ?? 'standard';
+$lifecycle      = $invoice['lifecycle_status'] ?? 'unfinished';
+$general_note   = $invoice['general_note'] ?? '';
 
-// Buyer Data
-$buyer_name    = get_post_meta($post_id, '_cig_buyer_name', true);
-$buyer_tax_id  = get_post_meta($post_id, '_cig_buyer_tax_id', true);
-$buyer_address = get_post_meta($post_id, '_cig_buyer_address', true);
-$buyer_phone   = get_post_meta($post_id, '_cig_buyer_phone', true);
-$buyer_email   = get_post_meta($post_id, '_cig_buyer_email', true);
+// Buyer Data from customer
+$buyer_name    = $customer['name'] ?? '';
+$buyer_tax_id  = $customer['tax_id'] ?? '';
+$buyer_address = $customer['address'] ?? '';
+$buyer_phone   = $customer['phone'] ?? '';
+$buyer_email   = $customer['email'] ?? '';
 
-// Items Data
-$items = get_post_meta($post_id, '_cig_items', true);
-if (!is_array($items)) {
-    $items = [];
+// Items Data - normalize field names for template
+$items = [];
+foreach ($items_raw as $item) {
+    $items[] = [
+        'product_id'       => $item['product_id'] ?? 0,
+        'name'             => $item['product_name'] ?? $item['name'] ?? '',
+        'brand'            => $item['brand'] ?? '',
+        'sku'              => $item['sku'] ?? '',
+        'desc'             => $item['desc'] ?? '',
+        'image'            => $item['image'] ?? '',
+        'qty'              => $item['quantity'] ?? $item['qty'] ?? 0,
+        'price'            => $item['price'] ?? 0,
+        'total'            => $item['total'] ?? (floatval($item['quantity'] ?? $item['qty'] ?? 0) * floatval($item['price'] ?? 0)),
+        'status'           => $item['item_status'] ?? $item['status'] ?? 'none',
+        'reservation_days' => $item['reservation_days'] ?? 0,
+        'warranty'         => $item['warranty_duration'] ?? $item['warranty'] ?? '',
+    ];
 }
 
 // Payment Data
-$payment_history  = get_post_meta($post_id, '_cig_payment_history', true) ?: [];
-$payment_total    = (float) get_post_meta($post_id, '_cig_invoice_total', true);
-$payment_paid     = (float) get_post_meta($post_id, '_cig_payment_paid_amount', true);
+$payment_history  = [];
+foreach ($payments_raw as $payment) {
+    $payment_history[] = [
+        'date'    => $payment['date'] ?? '',
+        'method'  => $payment['method'] ?? 'other',
+        'amount'  => $payment['amount'] ?? 0,
+        'comment' => $payment['comment'] ?? '',
+        'user_id' => $payment['user_id'] ?? 0
+    ];
+}
+$payment_total    = floatval($invoice['total_amount'] ?? 0);
+$payment_paid     = floatval($invoice['paid_amount'] ?? 0);
 $payment_due      = max(0, $payment_total - $payment_paid);
 
 // Determine Read-Only Mode
