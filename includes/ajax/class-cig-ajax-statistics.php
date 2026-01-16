@@ -87,7 +87,7 @@ class CIG_Ajax_Statistics {
         $total_outstanding = $wpdb->get_var("SELECT SUM(balance) FROM $table_invoices WHERE type = 'standard' AND balance > 0.01");
 
         wp_send_json_success([
-            'total_invoices' => (int)($items['total_invoices_count'] ?? 0),
+            'total_invoices' => (int)($money['paid_invoices_count'] ?? 0), // Cash Basis: count invoices with payments in date range
             'total_revenue' => (float)($money['total_paid'] ?? 0),
             'total_paid' => (float)($money['total_paid'] ?? 0),
             'total_company_transfer' => (float)($money['total_company_transfer'] ?? 0),
@@ -195,11 +195,13 @@ class CIG_Ajax_Statistics {
 
         $hist=get_post_meta($id,'_cig_payment_history',true);
         $inv_m=[]; $sums=[]; $has_target=false;
+        $payment_details = []; // Individual payment transactions for breakdown
         
         if(is_array($hist)) {
             foreach($hist as $h) {
                 $m=$h['method']??'other'; 
                 $amt=(float)$h['amount'];
+                $pay_date = $h['date'] ?? '';
                 
                 // გადახდის მეთოდის ფილტრი (მუშაობს მხოლოდ მაშინ, თუ mf არ არის reserved_invoices)
                 if($mf && $mf !== 'all' && $mf !== 'reserved_invoices') {
@@ -209,17 +211,44 @@ class CIG_Ajax_Statistics {
                 $inv_m[]=$method_labels[$m]??$m; 
                 if(!isset($sums[$m])) $sums[$m]=0; 
                 $sums[$m]+=$amt;
+                
+                // Collect individual payment details for breakdown
+                if ($amt > 0.001) {
+                    $payment_details[] = [
+                        'amount' => $amt,
+                        'date' => $pay_date,
+                        'method' => $method_labels[$m] ?? $m
+                    ];
+                }
             }
         }
 
         // ფილტრის ვალიდაცია: თუ კონკრეტულ მეთოდს ვეძებთ და არ არის
         if($mf && $mf !== 'all' && $mf !== 'reserved_invoices' && !$has_target) continue;
         
+        // Build detailed payment breakdown HTML with individual transactions
         $bd=''; 
-        foreach($sums as $m=>$v) {
-            if($v>0) $bd.=esc_html($method_labels[$m]??$m).': '.number_format($v,2).' ₾<br>';
+        foreach($payment_details as $pd_item) {
+            $bd .= '<div style="font-size:11px;color:#333;margin-bottom:2px;">';
+            $bd .= number_format($pd_item['amount'], 2) . ' ₾';
+            $has_date = !empty($pd_item['date']);
+            $has_method = !empty($pd_item['method']);
+            if ($has_date || $has_method) {
+                $bd .= ' <span style="color:#666;">(';
+                if ($has_date) {
+                    $bd .= esc_html($pd_item['date']);
+                }
+                if ($has_date && $has_method) {
+                    $bd .= ' - ';
+                }
+                if ($has_method) {
+                    $bd .= esc_html($pd_item['method']);
+                }
+                $bd .= ')</span>';
+            }
+            $bd .= '</div>';
         }
-        if($bd) $bd='<div style="font-size:10px;color:#666;">'.$bd.'</div>';
+        if($bd) $bd='<div style="margin-top:4px;">'.$bd.'</div>';
         
         $tot=(float)get_post_meta($id,'_cig_invoice_total',true);
         $pd=(float)get_post_meta($id,'_cig_payment_paid_amount',true);
