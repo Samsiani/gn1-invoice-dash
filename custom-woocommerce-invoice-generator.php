@@ -146,6 +146,7 @@ final class CIG_Invoice_Generator {
         require_once CIG_INCLUDES_DIR . 'class-cig-stock-manager.php';
         
         // Database & Services (4.0.0)
+        require_once CIG_INCLUDES_DIR . 'class-cig-db-installer.php';
         require_once CIG_INCLUDES_DIR . 'database/class-cig-database.php';
         require_once CIG_INCLUDES_DIR . 'dto/class-cig-invoice-item-dto.php';
         require_once CIG_INCLUDES_DIR . 'services/class-cig-invoice-service.php';
@@ -224,7 +225,10 @@ final class CIG_Invoice_Generator {
             wp_schedule_event(time(), 'hourly', 'cig_check_expired_reservations');
         }
         
-        // Create custom tables (4.0.0)
+        // Create custom tables using DB Installer (2.0.0)
+        CIG_DB_Installer::install();
+        
+        // Also run legacy database creation for backward compatibility
         CIG_Database::create_tables();
         
         update_option('cig_version', CIG_VERSION, false);
