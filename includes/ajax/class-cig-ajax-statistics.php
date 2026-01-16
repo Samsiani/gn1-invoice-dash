@@ -1149,139 +1149,181 @@ class CIG_Ajax_Statistics {
 
     /**
      * Get Product Performance Table for the redesigned Product Insight tab
-     * Returns aggregated product data with current stock, reserved, sold qty, and revenue
+     * Returns aggregated product data with sold, reserved, fictive counts and revenue
+     * Only shows products that have activity (sold/reserved/fictive > 0) in the selected period
      */
     public function get_product_performance_table() {
         $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
         global $wpdb;
 
-        $date_from = sanitize_text_field($_POST['date_from'] ?? '');
-        $date_to   = sanitize_text_field($_POST['date_to'] ?? '');
-        $search    = sanitize_text_field($_POST['search'] ?? '');
-        $sort_by   = sanitize_text_field($_POST['sort_by'] ?? 'total_sold');
-        $sort_order = strtoupper(sanitize_text_field($_POST['sort_order'] ?? 'DESC'));
-        
-        // Validate sort order
-        if (!in_array($sort_order, ['ASC', 'DESC'], true)) {
-            $sort_order = 'DESC';
-        }
+        $date_from  = sanitize_text_field($_POST['date_from'] ?? '');
+        $date_to    = sanitize_text_field($_POST['date_to'] ?? '');
+        $search     = sanitize_text_field($_POST['search'] ?? '');
+        $page       = max(1, intval($_POST['page'] ?? 1));
+        $per_page   = 20;
+        $offset     = ($page - 1) * $per_page;
 
-        // Base query: Get all products (simple and variations)
-        $args = [
-            'post_type'      => ['product', 'product_variation'],
-            'post_status'    => 'publish',
-            'posts_per_page' => 200,
-            'fields'         => 'ids',
-        ];
-
-        // Search filter: Product Title or SKU
-        if ($search) {
-            $args['meta_query'] = [
-                'relation' => 'OR',
-                [
-                    'key'     => '_sku',
-                    'value'   => $search,
-                    'compare' => 'LIKE',
-                ],
-            ];
-            $args['s'] = $search;
-        }
-
-        $product_ids = get_posts($args);
-        
         // If tables don't exist, return empty
         if (!$this->tables_exist()) {
-            wp_send_json_success(['products' => []]);
+            wp_send_json_success([
+                'products' => [],
+                'pagination' => ['current_page' => 1, 'total_pages' => 0]
+            ]);
         }
 
-        // Build date filter for aggregation query
-        $date_where = "";
-        $date_params = [];
-        if ($date_from) {
-            $date_where .= " AND i.sale_date >= %s";
-            $date_params[] = $date_from . ' 00:00:00';
+        // Prepare date parameters
+        $date_from_full = $date_from ? $date_from . ' 00:00:00' : '';
+        $date_to_full = $date_to ? $date_to . ' 23:59:59' : '';
+        $search_like = $search ? '%' . $wpdb->esc_like($search) . '%' : '';
+
+        // Build SQL dynamically based on filters
+        // Main aggregation query with CASE WHEN for conditional sums
+        $sql = "SELECT 
+            it.product_id,
+            MAX(it.product_name) as product_name,
+            MAX(it.sku) as sku,
+            MAX(it.price) as price,
+            MAX(it.image) as image,
+            COALESCE(SUM(CASE 
+                WHEN inv.status = 'standard' AND it.item_status = 'sold'";
+        if ($date_from) $sql .= " AND inv.sale_date >= %s";
+        if ($date_to) $sql .= " AND inv.sale_date <= %s";
+        $sql .= " THEN it.quantity ELSE 0 END), 0) as total_sold,
+            COALESCE(SUM(CASE 
+                WHEN inv.status = 'standard' AND it.item_status = 'reserved'";
+        if ($date_from) $sql .= " AND inv.sale_date >= %s";
+        if ($date_to) $sql .= " AND inv.sale_date <= %s";
+        $sql .= " THEN it.quantity ELSE 0 END), 0) as total_reserved,
+            COALESCE(SUM(CASE 
+                WHEN inv.status = 'fictive'";
+        if ($date_from) $sql .= " AND inv.created_at >= %s";
+        if ($date_to) $sql .= " AND inv.created_at <= %s";
+        $sql .= " THEN it.quantity ELSE 0 END), 0) as total_fictive,
+            COALESCE(SUM(CASE 
+                WHEN inv.status = 'standard' AND it.item_status = 'sold'";
+        if ($date_from) $sql .= " AND inv.sale_date >= %s";
+        if ($date_to) $sql .= " AND inv.sale_date <= %s";
+        $sql .= " THEN it.total ELSE 0 END), 0) as total_revenue
+            FROM {$this->table_items} it
+            INNER JOIN {$this->table_invoices} inv ON it.invoice_id = inv.id
+            WHERE " . ($search ? "(it.product_name LIKE %s OR it.sku LIKE %s)" : "1=1") . "
+            GROUP BY it.product_id
+            HAVING (total_sold > 0 OR total_reserved > 0 OR total_fictive > 0)
+            ORDER BY total_sold DESC, total_reserved DESC, total_fictive DESC
+            LIMIT %d OFFSET %d";
+
+        // Build parameters array in correct order
+        $params = [];
+        // total_sold date params
+        if ($date_from) $params[] = $date_from_full;
+        if ($date_to) $params[] = $date_to_full;
+        // total_reserved date params
+        if ($date_from) $params[] = $date_from_full;
+        if ($date_to) $params[] = $date_to_full;
+        // total_fictive date params (uses created_at)
+        if ($date_from) $params[] = $date_from_full;
+        if ($date_to) $params[] = $date_to_full;
+        // total_revenue date params
+        if ($date_from) $params[] = $date_from_full;
+        if ($date_to) $params[] = $date_to_full;
+        // search params
+        if ($search) {
+            $params[] = $search_like;
+            $params[] = $search_like;
         }
-        if ($date_to) {
-            $date_where .= " AND i.sale_date <= %s";
-            $date_params[] = $date_to . ' 23:59:59';
+        // pagination params
+        $params[] = $per_page;
+        $params[] = $offset;
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+        $results = $wpdb->get_results($wpdb->prepare($sql, $params), ARRAY_A);
+
+        // Build count query for pagination
+        $count_sql = "SELECT COUNT(*) FROM (
+            SELECT it.product_id,
+            COALESCE(SUM(CASE 
+                WHEN inv.status = 'standard' AND it.item_status = 'sold'";
+        if ($date_from) $count_sql .= " AND inv.sale_date >= %s";
+        if ($date_to) $count_sql .= " AND inv.sale_date <= %s";
+        $count_sql .= " THEN it.quantity ELSE 0 END), 0) as total_sold,
+            COALESCE(SUM(CASE 
+                WHEN inv.status = 'standard' AND it.item_status = 'reserved'";
+        if ($date_from) $count_sql .= " AND inv.sale_date >= %s";
+        if ($date_to) $count_sql .= " AND inv.sale_date <= %s";
+        $count_sql .= " THEN it.quantity ELSE 0 END), 0) as total_reserved,
+            COALESCE(SUM(CASE 
+                WHEN inv.status = 'fictive'";
+        if ($date_from) $count_sql .= " AND inv.created_at >= %s";
+        if ($date_to) $count_sql .= " AND inv.created_at <= %s";
+        $count_sql .= " THEN it.quantity ELSE 0 END), 0) as total_fictive
+            FROM {$this->table_items} it
+            INNER JOIN {$this->table_invoices} inv ON it.invoice_id = inv.id
+            WHERE " . ($search ? "(it.product_name LIKE %s OR it.sku LIKE %s)" : "1=1") . "
+            GROUP BY it.product_id
+            HAVING (total_sold > 0 OR total_reserved > 0 OR total_fictive > 0)
+        ) as subquery";
+
+        // Build count params (same as main query but without pagination)
+        $count_params = [];
+        if ($date_from) $count_params[] = $date_from_full;
+        if ($date_to) $count_params[] = $date_to_full;
+        if ($date_from) $count_params[] = $date_from_full;
+        if ($date_to) $count_params[] = $date_to_full;
+        if ($date_from) $count_params[] = $date_from_full;
+        if ($date_to) $count_params[] = $date_to_full;
+        if ($search) {
+            $count_params[] = $search_like;
+            $count_params[] = $search_like;
         }
 
-        // Get stock manager instance
-        $stock_manager = function_exists('CIG') && isset(CIG()->stock) ? CIG()->stock : new CIG_Stock_Manager();
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+        $total_count = $wpdb->get_var(
+            !empty($count_params) ? $wpdb->prepare($count_sql, $count_params) : $count_sql
+        );
+        $total_pages = max(1, ceil(intval($total_count) / $per_page));
 
+        // Process results and get current stock info
         $products = [];
-
-        foreach ($product_ids as $product_id) {
-            $product = wc_get_product($product_id);
-            if (!$product) continue;
-
-            // Get product data
-            $product_name = $product->get_name();
-            $sku = $product->get_sku();
-            $price = $product->get_price();
-            $stock_qty = $product->get_stock_quantity();
-            $image_url = wp_get_attachment_image_url($product->get_image_id(), 'thumbnail') ?: '';
-
-            // Search filter validation (in case WP_Query didn't fully filter)
-            if ($search) {
-                $search_lower = strtolower($search);
-                if (stripos($product_name, $search) === false && stripos($sku ?: '', $search) === false) {
-                    continue;
+        foreach ($results as $row) {
+            $product_id = intval($row['product_id']);
+            
+            // Get current stock from WooCommerce product if available
+            $stock = null;
+            $image_url = $row['image'] ?: '';
+            $price = (float)$row['price'];
+            
+            if ($product_id > 0 && function_exists('wc_get_product')) {
+                $product = wc_get_product($product_id);
+                if ($product) {
+                    $stock = $product->get_stock_quantity();
+                    $price = (float)$product->get_price() ?: $price;
+                    if (!$image_url) {
+                        $image_url = wp_get_attachment_image_url($product->get_image_id(), 'thumbnail') ?: '';
+                    }
                 }
             }
-
-            // Get reserved stock using CIG_Stock_Manager
-            $reserved_qty = $stock_manager->get_reserved($product_id);
-
-            // Query aggregated sales data from invoice items
-            // Only count items where invoice status = 'standard' (Active) and item_status = 'sold'
-            $sql = "SELECT 
-                COALESCE(SUM(it.quantity), 0) as total_sold,
-                COALESCE(SUM(it.total), 0) as total_revenue
-                FROM {$this->table_items} it
-                INNER JOIN {$this->table_invoices} i ON it.invoice_id = i.id
-                WHERE it.product_id = %d
-                AND it.item_status = 'sold'
-                AND (i.status = 'standard' OR i.status IS NULL)
-                {$date_where}";
-
-            $params = array_merge([$product_id], $date_params);
-
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
-            $sales_data = $wpdb->get_row($wpdb->prepare($sql, $params), ARRAY_A);
-
-            $total_sold = (float)($sales_data['total_sold'] ?? 0);
-            $total_revenue = (float)($sales_data['total_revenue'] ?? 0);
 
             $products[] = [
                 'product_id'    => $product_id,
                 'image'         => $image_url,
-                'name'          => $product_name,
-                'sku'           => $sku ?: '',
-                'price'         => (float)$price,
-                'stock'         => $stock_qty !== null ? (float)$stock_qty : null,
-                'reserved'      => (float)$reserved_qty,
-                'total_sold'    => $total_sold,
-                'total_revenue' => $total_revenue,
+                'name'          => $row['product_name'] ?: '',
+                'sku'           => $row['sku'] ?: '',
+                'price'         => $price,
+                'stock'         => $stock,
+                'total_reserved'=> (float)$row['total_reserved'],
+                'total_fictive' => (float)$row['total_fictive'],
+                'total_sold'    => (float)$row['total_sold'],
+                'total_revenue' => (float)$row['total_revenue'],
             ];
         }
 
-        // Sort results
-        $valid_sort_columns = ['price', 'stock', 'reserved', 'total_sold', 'total_revenue'];
-        if (in_array($sort_by, $valid_sort_columns, true)) {
-            usort($products, function($a, $b) use ($sort_by, $sort_order) {
-                $a_val = $a[$sort_by] ?? 0;
-                $b_val = $b[$sort_by] ?? 0;
-                if ($a_val === null) $a_val = 0;
-                if ($b_val === null) $b_val = 0;
-                if ($sort_order === 'ASC') {
-                    return $a_val <=> $b_val;
-                }
-                return $b_val <=> $a_val;
-            });
-        }
-
-        wp_send_json_success(['products' => $products]);
+        wp_send_json_success([
+            'products' => $products,
+            'pagination' => [
+                'current_page' => $page,
+                'total_pages' => (int)$total_pages
+            ]
+        ]);
     }
 
     /**
