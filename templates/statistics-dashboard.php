@@ -526,7 +526,7 @@ if (!defined('ABSPATH')) {
         
         <div style="margin-bottom:15px;">
             <label style="display:block; font-weight:bold; margin-bottom:5px;"><?php esc_html_e('თარიღი', 'cig'); ?></label>
-            <input type="date" id="cig-dep-date" class="regular-text" style="width:100%;" value="<?php echo date('Y-m-d'); ?>">
+            <input type="date" id="cig-dep-date" class="regular-text" style="width:100%;" value="<?php echo current_time('Y-m-d'); ?>">
         </div>
 
         <div style="margin-bottom:15px;">

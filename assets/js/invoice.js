@@ -235,7 +235,7 @@ jQuery(function ($) {
       var remaining = grandTotal - currentPaid;
       if (remaining <= 0.01) { alert('ინვოისი უკვე სრულად არის გადახდილი.'); return; }
       $('#new-pay-amount').val(remaining.toFixed(2));
-      $('#new-pay-date').val(new Date().toISOString().split('T')[0]);
+      $('#new-pay-date').val(cigAjax.site_date);
   });
 
   $(document).on('click', '.btn-delete-payment', function() {
