@@ -225,6 +225,17 @@ class CIG_Ajax_Invoices {
                     $item['status'] = 'reserved';
                 }
             }
+
+            // BUG FIX: Explicitly calculate item_total (qty * price) to ensure it's not 0
+            $qty   = floatval($item['qty'] ?? 0);
+            $price = floatval($item['price'] ?? 0);
+            $item_total = floatval($item['total'] ?? 0);
+            
+            // Calculate total if missing or zero
+            if ($item_total <= 0 && $qty > 0 && $price > 0) {
+                $item['total'] = $qty * $price;
+            }
+
             $processed_items[] = $item;
         }
         $items = $processed_items; 
@@ -483,6 +494,16 @@ class CIG_Ajax_Invoices {
 
         // Insert new items
         foreach ($items as $item) {
+            // Get quantity and price
+            $qty   = floatval($item['qty'] ?? 0);
+            $price = floatval($item['price'] ?? 0);
+
+            // Calculate total if missing or zero
+            $total = floatval($item['total'] ?? 0);
+            if ($total <= 0 && $qty > 0 && $price > 0) {
+                $total = $qty * $price;
+            }
+
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
             $wpdb->insert(
                 $this->table_items,
@@ -491,13 +512,14 @@ class CIG_Ajax_Invoices {
                     'product_id'        => intval($item['product_id'] ?? 0),
                     'product_name'      => sanitize_text_field($item['name'] ?? ''),
                     'sku'               => sanitize_text_field($item['sku'] ?? ''),
-                    'quantity'          => floatval($item['qty'] ?? 0),
-                    'price'             => floatval($item['price'] ?? 0),
+                    'quantity'          => $qty,
+                    'price'             => $price,
+                    'total'             => $total,
                     'item_status'       => sanitize_text_field($item['status'] ?? 'none'),
                     'warranty_duration' => sanitize_text_field($item['warranty'] ?? ''),
                     'reservation_days'  => intval($item['reservation_days'] ?? 0)
                 ],
-                ['%d', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%d']
+                ['%d', '%d', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%d']
             );
         }
     }

@@ -33,6 +33,185 @@ class CIG_Migrator {
     public function __construct() {
         add_action('admin_notices', [$this, 'display_migration_notice']);
         add_action('admin_init', [$this, 'dismiss_migration_notice']);
+        
+        // Register admin menu for manual migration
+        add_action('admin_menu', [$this, 'register_migration_menu'], 30);
+        
+        // Register AJAX handler for manual migration
+        add_action('wp_ajax_cig_manual_migration', [$this, 'handle_manual_migration']);
+    }
+
+    /**
+     * Register migration submenu page under Invoices
+     */
+    public function register_migration_menu() {
+        add_submenu_page(
+            'edit.php?post_type=invoice',
+            __('DB Migration', 'cig'),
+            __('DB Migration', 'cig'),
+            'manage_woocommerce',
+            'cig-db-migration',
+            [$this, 'render_migration_page']
+        );
+    }
+
+    /**
+     * Render the migration admin page
+     */
+    public function render_migration_page() {
+        $is_complete = self::is_migration_complete();
+        $results = get_option(self::MIGRATION_RESULTS_OPTION);
+        $nonce = wp_create_nonce('cig_manual_migration');
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e('Database Migration', 'cig'); ?></h1>
+            
+            <div class="card" style="max-width: 600px; padding: 20px;">
+                <h2><?php esc_html_e('Migration Status', 'cig'); ?></h2>
+                
+                <?php if ($is_complete) : ?>
+                    <p style="color: #46b450;">
+                        <span class="dashicons dashicons-yes-alt"></span>
+                        <?php esc_html_e('Migration has been completed.', 'cig'); ?>
+                    </p>
+                    <?php if ($results && is_array($results)) : ?>
+                        <p>
+                            <?php
+                            printf(
+                                /* translators: 1: success count, 2: total count, 3: failed count */
+                                esc_html__('Last migration: %1$d of %2$d invoices migrated successfully. %3$d failed.', 'cig'),
+                                intval($results['success'] ?? 0),
+                                intval($results['total'] ?? 0),
+                                intval($results['failed'] ?? 0)
+                            );
+                            ?>
+                        </p>
+                        <?php if (!empty($results['timestamp'])) : ?>
+                            <p><small><?php echo esc_html(sprintf(__('Completed at: %s', 'cig'), $results['timestamp'])); ?></small></p>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                <?php else : ?>
+                    <p style="color: #d63638;">
+                        <span class="dashicons dashicons-warning"></span>
+                        <?php esc_html_e('Migration has not been completed yet.', 'cig'); ?>
+                    </p>
+                <?php endif; ?>
+                
+                <hr style="margin: 20px 0;">
+                
+                <h3><?php esc_html_e('Manual Migration', 'cig'); ?></h3>
+                <p><?php esc_html_e('Use this button to manually trigger the migration from postmeta to custom tables. This will re-run the migration even if it was previously completed.', 'cig'); ?></p>
+                <p class="description" style="color: #d63638;">
+                    <strong><?php esc_html_e('Warning:', 'cig'); ?></strong>
+                    <?php esc_html_e('Do not run this while the system is actively being used. Existing data in custom tables will be updated based on postmeta data.', 'cig'); ?>
+                </p>
+                
+                <p>
+                    <input type="hidden" id="cig-migration-nonce" value="<?php echo esc_attr($nonce); ?>">
+                    <button type="button" id="cig-start-migration" class="button button-primary">
+                        <?php esc_html_e('Start Migration', 'cig'); ?>
+                    </button>
+                    <span id="cig-migration-spinner" class="spinner" style="float: none; margin-left: 10px;"></span>
+                </p>
+                
+                <div id="cig-migration-results" style="display: none; margin-top: 20px; padding: 15px; background: #f0f0f1; border-left: 4px solid #72aee6;">
+                    <h4 style="margin-top: 0;"><?php esc_html_e('Migration Results', 'cig'); ?></h4>
+                    <p id="cig-migration-message"></p>
+                </div>
+            </div>
+        </div>
+        
+        <script type="text/javascript">
+        jQuery(document).ready(function($) {
+            $('#cig-start-migration').on('click', function() {
+                var $button = $(this);
+                var $spinner = $('#cig-migration-spinner');
+                var $results = $('#cig-migration-results');
+                var $message = $('#cig-migration-message');
+                var nonce = $('#cig-migration-nonce').val();
+                
+                var confirmMessage = '<?php echo esc_js(__('WARNING: This will reset the migration flag and re-migrate all invoices from postmeta to custom tables. Do not run this while users are actively creating or editing invoices. Are you sure you want to continue?', 'cig')); ?>';
+                
+                if (!confirm(confirmMessage)) {
+                    return;
+                }
+                
+                $button.prop('disabled', true);
+                $spinner.addClass('is-active');
+                $results.hide();
+                
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'cig_manual_migration',
+                        nonce: nonce
+                    },
+                    success: function(response) {
+                        $spinner.removeClass('is-active');
+                        $button.prop('disabled', false);
+                        
+                        if (response.success) {
+                            var data = response.data;
+                            var statusColor = data.failed > 0 ? '#d63638' : '#46b450';
+                            $results.css('border-left-color', statusColor);
+                            $message.html(
+                                '<strong><?php echo esc_js(__('Migration completed!', 'cig')); ?></strong><br>' +
+                                '<?php echo esc_js(__('Total:', 'cig')); ?> ' + data.total + '<br>' +
+                                '<?php echo esc_js(__('Success:', 'cig')); ?> ' + data.success + '<br>' +
+                                '<?php echo esc_js(__('Failed:', 'cig')); ?> ' + data.failed
+                            );
+                            $results.show();
+                        } else {
+                            $results.css('border-left-color', '#d63638');
+                            $message.html('<strong><?php echo esc_js(__('Error:', 'cig')); ?></strong> ' + (response.data.message || '<?php echo esc_js(__('Unknown error occurred.', 'cig')); ?>'));
+                            $results.show();
+                        }
+                    },
+                    error: function() {
+                        $spinner.removeClass('is-active');
+                        $button.prop('disabled', false);
+                        $results.css('border-left-color', '#d63638');
+                        $message.html('<strong><?php echo esc_js(__('Error:', 'cig')); ?></strong> <?php echo esc_js(__('AJAX request failed.', 'cig')); ?>');
+                        $results.show();
+                    }
+                });
+            });
+        });
+        </script>
+        <?php
+    }
+
+    /**
+     * Handle manual migration AJAX request
+     */
+    public function handle_manual_migration() {
+        // Verify nonce
+        if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'cig_manual_migration')) {
+            wp_send_json_error(['message' => __('Security check failed.', 'cig')]);
+        }
+        
+        // Check capability
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'cig')]);
+        }
+        
+        // Reset migration flag to allow re-run
+        self::reset_migration_flag();
+        
+        // Run migration
+        $results = $this->migrate_v1_to_v2();
+        
+        if ($results === false) {
+            wp_send_json_error(['message' => __('Migration could not be started.', 'cig')]);
+        }
+        
+        wp_send_json_success([
+            'total'   => intval($results['total'] ?? 0),
+            'success' => intval($results['success'] ?? 0),
+            'failed'  => intval($results['failed'] ?? 0),
+            'errors'  => $results['errors'] ?? []
+        ]);
     }
 
     /**
@@ -196,6 +375,16 @@ class CIG_Migrator {
                 $wpdb->delete($table_items, ['invoice_id' => $new_invoice_id], ['%d']);
 
                 foreach ($items as $item) {
+                    // Get quantity and price
+                    $qty   = floatval($item['qty'] ?? 0);
+                    $price = floatval($item['price'] ?? 0);
+
+                    // Calculate total if missing or zero
+                    $total = floatval($item['total'] ?? 0);
+                    if ($total <= 0 && $qty > 0 && $price > 0) {
+                        $total = $qty * $price;
+                    }
+
                     $wpdb->insert(
                         $table_items,
                         [
@@ -203,13 +392,14 @@ class CIG_Migrator {
                             'product_id'        => intval($item['product_id'] ?? 0),
                             'product_name'      => sanitize_text_field($item['name'] ?? ''),
                             'sku'               => sanitize_text_field($item['sku'] ?? ''),
-                            'quantity'          => floatval($item['qty'] ?? 0),
-                            'price'             => floatval($item['price'] ?? 0),
+                            'quantity'          => $qty,
+                            'price'             => $price,
+                            'total'             => $total,
                             'item_status'       => sanitize_text_field($item['status'] ?? 'none'),
                             'warranty_duration' => sanitize_text_field($item['warranty'] ?? ''),
                             'reservation_days'  => intval($item['reservation_days'] ?? 0),
                         ],
-                        ['%d', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%d']
+                        ['%d', '%d', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%d']
                     );
                 }
             }
@@ -460,6 +650,16 @@ class CIG_Migrator {
                 $wpdb->delete($table_items, ['invoice_id' => $invoice_id]);
 
                 foreach ($items as $item) {
+                    // Get quantity and price
+                    $qty   = floatval($item['qty'] ?? 0);
+                    $price = floatval($item['price'] ?? 0);
+
+                    // Calculate total if missing or zero
+                    $total = floatval($item['total'] ?? 0);
+                    if ($total <= 0 && $qty > 0 && $price > 0) {
+                        $total = $qty * $price;
+                    }
+
                     $wpdb->insert(
                         $table_items,
                         [
@@ -470,9 +670,9 @@ class CIG_Migrator {
                             'brand' => sanitize_text_field($item['brand'] ?? ''),
                             'description' => sanitize_textarea_field($item['desc'] ?? ''),
                             'image' => esc_url_raw($item['image'] ?? ''),
-                            'qty' => floatval($item['qty'] ?? 0),
-                            'price' => floatval($item['price'] ?? 0),
-                            'total' => floatval($item['total'] ?? 0),
+                            'qty' => $qty,
+                            'price' => $price,
+                            'total' => $total,
                             'warranty' => sanitize_text_field($item['warranty'] ?? ''),
                             'reservation_days' => intval($item['reservation_days'] ?? 0),
                             'status' => $item['status'] ?? 'sold',

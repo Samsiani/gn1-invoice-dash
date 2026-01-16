@@ -130,6 +130,7 @@ class CIG_DB_Installer {
             sku varchar(100) DEFAULT '',
             quantity decimal(10,2) DEFAULT 0.00,
             price decimal(10,2) DEFAULT 0.00,
+            total decimal(10,2) DEFAULT 0.00,
             item_status varchar(20) DEFAULT 'none',
             warranty_duration varchar(50) DEFAULT '',
             reservation_days int(11) DEFAULT 0,
