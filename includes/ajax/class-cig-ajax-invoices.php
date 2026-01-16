@@ -504,8 +504,16 @@ class CIG_Ajax_Invoices {
                 $total = $qty * $price;
             }
 
-            // Get image URL and sanitize
-            $image = esc_url_raw($item['image'] ?? '');
+            // Get image URL and sanitize - only store valid http(s) URLs
+            $raw_image = $item['image'] ?? '';
+            $image = '';
+            if (!empty($raw_image)) {
+                $sanitized = esc_url_raw($raw_image);
+                // Only store if it's a valid http or https URL
+                if (preg_match('/^https?:\/\//i', $sanitized)) {
+                    $image = $sanitized;
+                }
+            }
 
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
             $wpdb->insert(

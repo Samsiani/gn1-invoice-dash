@@ -457,8 +457,16 @@ class CIG_Invoice_Manager {
                 $total = $qty * $price;
             }
 
-            // Get image URL and sanitize
-            $image = esc_url_raw($item['image'] ?? '');
+            // Get image URL and sanitize - only store valid http(s) URLs
+            $raw_image = $item['image'] ?? '';
+            $image = '';
+            if (!empty($raw_image)) {
+                $sanitized = esc_url_raw($raw_image);
+                // Only store if it's a valid http or https URL
+                if (preg_match('/^https?:\/\//i', $sanitized)) {
+                    $image = $sanitized;
+                }
+            }
 
             $result = $wpdb->insert(
                 $this->table_items,
@@ -1003,7 +1011,7 @@ class CIG_Invoice_Manager {
         $stats = $wpdb->get_row(
             $wpdb->prepare(
                 "SELECT 
-                    COUNT(id) as count,
+                    COUNT(*) as count,
                     COALESCE(SUM(total_amount), 0) as revenue,
                     COALESCE(SUM(paid_amount), 0) as paid
                  FROM {$this->table_invoices} 
