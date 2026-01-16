@@ -47,20 +47,27 @@ class CIG_Customers {
 
     /**
      * Create or Update Customer from Invoice Data
-     * * @param array $buyer_data [name, tax_id, address, phone, email]
-     * @return int|false Customer Post ID or false
+     * Syncs to both WordPress post type (legacy) and custom table (wp_cig_customers)
+     *
+     * @param array $buyer_data [name, tax_id, address, phone, email]
+     * @return int|false Customer ID from custom table or false on failure
      */
     public function sync_customer($buyer_data) {
-        $tax_id = sanitize_text_field($buyer_data['tax_id'] ?? '');
-        $name   = sanitize_text_field($buyer_data['name'] ?? '');
+        global $wpdb;
+
+        $tax_id  = sanitize_text_field($buyer_data['tax_id'] ?? '');
+        $name    = sanitize_text_field($buyer_data['name'] ?? '');
+        $phone   = sanitize_text_field($buyer_data['phone'] ?? '');
+        $email   = sanitize_email($buyer_data['email'] ?? '');
+        $address = sanitize_text_field($buyer_data['address'] ?? '');
 
         // Validation: Tax ID and Name are mandatory
         if (empty($tax_id) || empty($name)) {
             return false;
         }
 
-        // 1. Check if customer exists by Tax ID
-        $existing_id = $this->get_customer_id_by_tax_id($tax_id);
+        // 1. Sync to Legacy Post Type (cig_customer)
+        $existing_post_id = $this->get_customer_id_by_tax_id($tax_id);
 
         $post_args = [
             'post_type'   => $this->post_type,
@@ -68,26 +75,79 @@ class CIG_Customers {
             'post_status' => 'publish',
         ];
 
-        if ($existing_id) {
-            // UPDATE existing
-            $post_args['ID'] = $existing_id;
-            $customer_id = wp_update_post($post_args);
+        if ($existing_post_id) {
+            $post_args['ID'] = $existing_post_id;
+            $customer_post_id = wp_update_post($post_args);
         } else {
-            // CREATE new
-            $customer_id = wp_insert_post($post_args);
+            $customer_post_id = wp_insert_post($post_args);
         }
 
-        if (is_wp_error($customer_id) || !$customer_id) {
-            return false;
+        if (!is_wp_error($customer_post_id) && $customer_post_id) {
+            update_post_meta($customer_post_id, '_cig_customer_tax_id', $tax_id);
+            update_post_meta($customer_post_id, '_cig_customer_address', $address);
+            update_post_meta($customer_post_id, '_cig_customer_phone', $phone);
+            update_post_meta($customer_post_id, '_cig_customer_email', $email);
         }
 
-        // 2. Save/Update Meta Data
-        update_post_meta($customer_id, '_cig_customer_tax_id', $tax_id);
-        update_post_meta($customer_id, '_cig_customer_address', sanitize_text_field($buyer_data['address'] ?? ''));
-        update_post_meta($customer_id, '_cig_customer_phone', sanitize_text_field($buyer_data['phone'] ?? ''));
-        update_post_meta($customer_id, '_cig_customer_email', sanitize_email($buyer_data['email'] ?? ''));
+        // 2. Sync to Custom Table (wp_cig_customers) - PRIMARY storage for statistics
+        $table_customers = $wpdb->prefix . 'cig_customers';
+        
+        // Check if table exists
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_customers));
+        if ($table_exists !== $table_customers) {
+            // Table doesn't exist, return post ID as fallback
+            return $customer_post_id ?: false;
+        }
 
-        return $customer_id;
+        // Check if customer exists in custom table by tax_id
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $existing_custom_id = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT id FROM {$table_customers} WHERE tax_id = %s LIMIT 1",
+                $tax_id
+            )
+        );
+
+        if ($existing_custom_id) {
+            // Update existing customer in custom table (including tax_id for data integrity)
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+            $result = $wpdb->update(
+                $table_customers,
+                [
+                    'tax_id'  => $tax_id,
+                    'name'    => $name,
+                    'phone'   => $phone,
+                    'email'   => $email,
+                    'address' => $address,
+                ],
+                ['id' => $existing_custom_id],
+                ['%s', '%s', '%s', '%s', '%s'],
+                ['%d']
+            );
+            // Return existing ID even if update had no changes (returns 0 when no rows affected)
+            return intval($existing_custom_id);
+        } else {
+            // Insert new customer into custom table
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+            $result = $wpdb->insert(
+                $table_customers,
+                [
+                    'tax_id'  => $tax_id,
+                    'name'    => $name,
+                    'phone'   => $phone,
+                    'email'   => $email,
+                    'address' => $address,
+                ],
+                ['%s', '%s', '%s', '%s', '%s']
+            );
+            
+            // Check if insert was successful
+            if (false === $result) {
+                return $customer_post_id ?: false; // Fallback to post ID on failure
+            }
+            return $wpdb->insert_id ?: false;
+        }
     }
 
     /**
