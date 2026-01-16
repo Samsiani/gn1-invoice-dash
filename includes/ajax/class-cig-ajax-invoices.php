@@ -1,10 +1,11 @@
 <?php
 /**
  * AJAX Handler for Invoice Operations
- * Updated: Auto-Status Logic, General Note Saving, Date Correction & ULTRA AGGRESSIVE Cache Purge
+ * Updated: Connects to CIG_Invoice_Manager for custom table operations
+ * with sale_date logic based on latest payment date
  *
  * @package CIG
- * @since 4.9.9
+ * @since 5.0.0
  */
 
 if (!defined('ABSPATH')) {
@@ -28,15 +29,31 @@ class CIG_Ajax_Invoices {
     /** @var CIG_Cache */
     private $cache;
 
+    /** @var CIG_Invoice_Manager */
+    private $invoice_manager;
+
+    /** @var string Table names */
+    private $table_invoices;
+    private $table_items;
+    private $table_payments;
+
     /**
      * Constructor
      */
     public function __construct($invoice, $stock, $validator, $security, $cache = null) {
+        global $wpdb;
+        
         $this->invoice   = $invoice;
         $this->stock     = $stock;
         $this->validator = $validator;
         $this->security  = $security;
         $this->cache     = $cache;
+        $this->invoice_manager = new CIG_Invoice_Manager();
+
+        // Initialize table names
+        $this->table_invoices  = $wpdb->prefix . 'cig_invoices';
+        $this->table_items     = $wpdb->prefix . 'cig_invoice_items';
+        $this->table_payments  = $wpdb->prefix . 'cig_payments';
 
         // Invoice CRUD
         add_action('wp_ajax_cig_save_invoice',           [$this, 'save_invoice']);
@@ -44,6 +61,17 @@ class CIG_Ajax_Invoices {
         add_action('wp_ajax_cig_next_invoice_number',    [$this, 'next_invoice_number']);
         add_action('wp_ajax_cig_toggle_invoice_status',  [$this, 'toggle_invoice_status']);
         add_action('wp_ajax_cig_mark_as_sold',           [$this, 'mark_as_sold']);
+    }
+
+    /**
+     * Check if custom tables exist
+     *
+     * @return bool
+     */
+    private function tables_exist() {
+        global $wpdb;
+        $result = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $this->table_invoices));
+        return $result === $this->table_invoices;
     }
 
     /**
@@ -63,6 +91,60 @@ class CIG_Ajax_Invoices {
             }
         }
         return $clean_history;
+    }
+
+    /**
+     * Calculate the latest payment date from payment history
+     *
+     * @param array $payments Payment history array
+     * @return string|null Latest payment date in Y-m-d format, or null if no valid dates
+     */
+    private function get_latest_payment_date($payments) {
+        $latest_date = null;
+        $latest_timestamp = 0;
+        
+        if (!is_array($payments) || empty($payments)) {
+            return null;
+        }
+
+        foreach ($payments as $payment) {
+            $payment_date = $payment['date'] ?? '';
+            if (!empty($payment_date)) {
+                // Use strtotime for proper date comparison
+                $timestamp = strtotime($payment_date);
+                if ($timestamp !== false && $timestamp > $latest_timestamp) {
+                    $latest_timestamp = $timestamp;
+                    $latest_date = $payment_date;
+                }
+            }
+        }
+
+        return $latest_date;
+    }
+
+    /**
+     * Calculate sale_date based on status and payment history
+     * If becoming 'standard', use the latest payment date + current time
+     *
+     * @param string $status     Invoice status (standard/fictive)
+     * @param array  $payments   Payment history array
+     * @return string|null sale_date in mysql format, or null for fictive
+     */
+    private function calculate_sale_date($status, $payments) {
+        if ($status !== 'standard') {
+            return null; // Fictive invoices have no sale_date
+        }
+
+        $latest_payment_date = $this->get_latest_payment_date($payments);
+        $current_time = current_time('H:i:s');
+
+        if (!empty($latest_payment_date)) {
+            // Combine latest payment date with current time
+            return $latest_payment_date . ' ' . $current_time;
+        }
+
+        // Fallback to current datetime if no payment dates
+        return current_time('mysql');
     }
 
     /**
@@ -197,11 +279,12 @@ class CIG_Ajax_Invoices {
         // NEW: Save General Note
         update_post_meta($pid, '_cig_general_note', $general_note);
         
-        // Update Customer
+        // Sync Customer to custom table and get customer_id
+        $customer_id = 0;
         if (function_exists('CIG') && isset(CIG()->customers)) { 
-            $cid = CIG()->customers->sync_customer($buyer); 
-            if ($cid) {
-                update_post_meta($pid, '_cig_customer_id', $cid); 
+            $customer_id = CIG()->customers->sync_customer($buyer); 
+            if ($customer_id) {
+                update_post_meta($pid, '_cig_customer_id', $customer_id); 
             }
         }
         
@@ -209,12 +292,40 @@ class CIG_Ajax_Invoices {
         $payment_data = (array)($d['payment'] ?? []);
         $payment_data['history'] = $hist;
 
-        // Save NEW items and metadata (PostMeta - Legacy)
+        // Save items and metadata (PostMeta - Legacy support)
         CIG_Invoice::save_meta($pid, $new_num, (array)($d['buyer'] ?? []), $items, $payment_data);
         
-        // --- DUAL STORAGE: Sync to Custom Tables via Service (4.0.0) ---
-        if (function_exists('CIG') && isset(CIG()->invoice_service)) {
-            CIG()->invoice_service->sync_invoice($pid, $new_num, $st, (array)($d['buyer'] ?? []), $items, $hist);
+        // Calculate total amount from items
+        $total_amount = 0;
+        foreach ($items as $item) {
+            if (($item['status'] ?? '') !== 'canceled') {
+                $total_amount += floatval($item['total'] ?? (floatval($item['qty'] ?? 0) * floatval($item['price'] ?? 0)));
+            }
+        }
+
+        // --- PRIMARY STORAGE: Use CIG_Invoice_Manager for custom tables ---
+        // Calculate sale_date based on latest payment date for 'standard' invoices
+        $sale_date = $this->calculate_sale_date($st, $hist);
+        
+        $manager_data = [
+            'invoice_number'   => $new_num,
+            'customer_id'      => $customer_id,
+            'status'           => $st,
+            'lifecycle_status' => 'unfinished',
+            'total_amount'     => $total_amount,
+            'paid_amount'      => $paid,
+            'author_id'        => get_current_user_id(),
+            'general_note'     => $general_note,
+            'items'            => $items,
+            'payments'         => $hist
+        ];
+
+        if ($update) {
+            // Update existing invoice in custom tables
+            $this->update_invoice_in_manager($pid, $manager_data, $st, $hist);
+        } else {
+            // Create new invoice in custom tables
+            $this->create_invoice_in_manager($pid, $manager_data, $sale_date);
         }
         
         // Update Stock
@@ -228,19 +339,9 @@ class CIG_Ajax_Invoices {
             $this->cache->delete('user_invoices_' . $author_id);
         }
 
-        // --- DATE UPDATE LOGIC ---
+        // --- DATE UPDATE LOGIC for WordPress post ---
         if ($st === 'standard') {
-            // Use invoice service for date synchronization
-            if (function_exists('CIG') && isset(CIG()->invoice_service)) {
-                CIG()->invoice_service->update_invoice($pid, ['status' => $st], $hist);
-            } else {
-                $payment_date = '';
-                if (!empty($hist) && is_array($hist)) {
-                    $first_payment = reset($hist);
-                    $payment_date = $first_payment['date'] ?? '';
-                }
-                $this->force_update_invoice_date($pid, $payment_date);
-            }
+            $this->force_update_invoice_date($pid, $this->get_latest_payment_date($hist));
         }
 
         // --- FULL CACHE PURGE (WP + LiteSpeed) ---
@@ -252,6 +353,195 @@ class CIG_Ajax_Invoices {
             'invoice_number' => $new_num,
             'status'         => $st
         ]);
+    }
+
+    /**
+     * Create invoice in CIG_Invoice_Manager custom tables
+     *
+     * @param int    $post_id    WordPress post ID (used as invoice ID)
+     * @param array  $data       Invoice data
+     * @param string $sale_date  Calculated sale_date
+     * @return void
+     */
+    private function create_invoice_in_manager($post_id, $data, $sale_date) {
+        global $wpdb;
+
+        // Check if tables exist
+        if (!$this->tables_exist()) {
+            return; // Tables don't exist yet
+        }
+
+        $now = current_time('mysql');
+
+        // Insert invoice record with explicit ID matching WordPress post ID
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $wpdb->insert(
+            $this->table_invoices,
+            [
+                'id'               => $post_id,
+                'invoice_number'   => $data['invoice_number'],
+                'customer_id'      => intval($data['customer_id']),
+                'status'           => $data['status'],
+                'lifecycle_status' => $data['lifecycle_status'],
+                'total_amount'     => floatval($data['total_amount']),
+                'paid_amount'      => floatval($data['paid_amount']),
+                'created_at'       => $now,
+                'sale_date'        => $sale_date,
+                'author_id'        => intval($data['author_id']),
+                'general_note'     => $data['general_note'],
+                'is_rs_uploaded'   => 0
+            ],
+            ['%d', '%s', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%d', '%s', '%d']
+        );
+
+        // Insert items
+        $this->sync_items_to_manager($post_id, $data['items']);
+
+        // Insert payments
+        $this->sync_payments_to_manager($post_id, $data['payments']);
+    }
+
+    /**
+     * Update invoice in CIG_Invoice_Manager custom tables
+     *
+     * @param int    $post_id   WordPress post ID
+     * @param array  $data      Invoice data
+     * @param string $status    New status
+     * @param array  $payments  Payment history
+     * @return void
+     */
+    private function update_invoice_in_manager($post_id, $data, $status, $payments) {
+        global $wpdb;
+
+        // Check if tables exist
+        if (!$this->tables_exist()) {
+            return; // Tables don't exist yet
+        }
+
+        // Get existing invoice to check old status
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $existing = $wpdb->get_row(
+            $wpdb->prepare("SELECT status, sale_date FROM {$this->table_invoices} WHERE id = %d", $post_id),
+            ARRAY_A
+        );
+
+        $update_data = [
+            'invoice_number'   => $data['invoice_number'],
+            'customer_id'      => intval($data['customer_id']),
+            'status'           => $status,
+            'total_amount'     => floatval($data['total_amount']),
+            'paid_amount'      => floatval($data['paid_amount']),
+            'general_note'     => $data['general_note']
+        ];
+        $update_format = ['%s', '%d', '%s', '%f', '%f', '%s'];
+
+        // Date Logic: If status is becoming 'standard', calculate sale_date
+        // based on the latest payment date
+        if ($status === 'standard') {
+            $old_status = $existing['status'] ?? 'fictive';
+            $old_sale_date = $existing['sale_date'] ?? null;
+
+            // Calculate new sale_date if:
+            // 1. Transitioning from fictive to standard (no sale_date yet)
+            // 2. Already standard but needs date update based on latest payment
+            if ($old_status === 'fictive' || empty($old_sale_date)) {
+                $sale_date = $this->calculate_sale_date($status, $payments);
+                $update_data['sale_date'] = $sale_date;
+                $update_format[] = '%s';
+            }
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $wpdb->update(
+            $this->table_invoices,
+            $update_data,
+            ['id' => $post_id],
+            $update_format,
+            ['%d']
+        );
+
+        // Sync items
+        $this->sync_items_to_manager($post_id, $data['items']);
+
+        // Sync payments
+        $this->sync_payments_to_manager($post_id, $data['payments']);
+    }
+
+    /**
+     * Sync items to custom table
+     *
+     * @param int   $invoice_id Invoice ID
+     * @param array $items      Items array
+     * @return void
+     */
+    private function sync_items_to_manager($invoice_id, $items) {
+        global $wpdb;
+
+        // Delete existing items
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $wpdb->delete($this->table_items, ['invoice_id' => $invoice_id], ['%d']);
+
+        // Insert new items
+        foreach ($items as $item) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+            $wpdb->insert(
+                $this->table_items,
+                [
+                    'invoice_id'        => $invoice_id,
+                    'product_id'        => intval($item['product_id'] ?? 0),
+                    'product_name'      => sanitize_text_field($item['name'] ?? ''),
+                    'sku'               => sanitize_text_field($item['sku'] ?? ''),
+                    'quantity'          => floatval($item['qty'] ?? 0),
+                    'price'             => floatval($item['price'] ?? 0),
+                    'item_status'       => sanitize_text_field($item['status'] ?? 'none'),
+                    'warranty_duration' => sanitize_text_field($item['warranty'] ?? ''),
+                    'reservation_days'  => intval($item['reservation_days'] ?? 0)
+                ],
+                ['%d', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%d']
+            );
+        }
+    }
+
+    /**
+     * Sync payments to custom table
+     *
+     * @param int   $invoice_id Invoice ID
+     * @param array $payments   Payments array
+     * @return void
+     */
+    private function sync_payments_to_manager($invoice_id, $payments) {
+        global $wpdb;
+
+        // Delete existing payments
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $wpdb->delete($this->table_payments, ['invoice_id' => $invoice_id], ['%d']);
+
+        // Insert new payments
+        foreach ($payments as $payment) {
+            $amount = floatval($payment['amount'] ?? 0);
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $payment_date = sanitize_text_field($payment['date'] ?? '');
+            if (empty($payment_date)) {
+                $payment_date = current_time('Y-m-d');
+            }
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+            $wpdb->insert(
+                $this->table_payments,
+                [
+                    'invoice_id' => $invoice_id,
+                    'amount'     => $amount,
+                    'date'       => $payment_date,
+                    'method'     => sanitize_text_field($payment['method'] ?? 'other'),
+                    'user_id'    => intval($payment['user_id'] ?? get_current_user_id()),
+                    'comment'    => sanitize_text_field($payment['comment'] ?? '')
+                ],
+                ['%d', '%f', '%s', '%s', '%d', '%s']
+            );
+        }
     }
 
     /**
@@ -299,9 +589,15 @@ class CIG_Ajax_Invoices {
                  $this->stock->update_invoice_reservations($id, [], $updated_items);
             }
             
-            // 5. Mark invoice as completed & standard
+            // 5. Mark invoice as completed & standard in postmeta
             update_post_meta($id, '_cig_lifecycle_status', 'completed');
             update_post_meta($id, '_cig_invoice_status', 'standard');
+
+            // 6. Update custom tables using CIG_Invoice_Manager
+            $result = $this->invoice_manager->mark_as_sold($id);
+            
+            // Also sync items to custom table
+            $this->sync_items_to_manager($id, $updated_items);
 
             // Clear cache
             if ($this->cache) {
@@ -312,8 +608,7 @@ class CIG_Ajax_Invoices {
             $history = get_post_meta($id, '_cig_payment_history', true);
             $payment_date = '';
             if (is_array($history) && !empty($history)) {
-                $first_payment = reset($history);
-                $payment_date = $first_payment['date'] ?? '';
+                $payment_date = $this->get_latest_payment_date($history);
             }
             $this->force_update_invoice_date($id, $payment_date);
 
@@ -350,28 +645,57 @@ class CIG_Ajax_Invoices {
 
         $ost = get_post_meta($id, '_cig_invoice_status', true) ?: 'standard';
         
-        // 1. Update status in DB
+        // 1. Update status in DB (postmeta)
         update_post_meta($id, '_cig_invoice_status', $nst);
         
-        // 2. Clear Cache
+        // 2. Update custom tables
+        global $wpdb;
+        $table_invoices = $wpdb->prefix . 'cig_invoices';
+        
+        $update_data = ['status' => $nst];
+        $update_format = ['%s'];
+        
+        // If activating (fictive -> standard), set sale_date
+        if ($ost === 'fictive' && $nst === 'standard') {
+            $history = get_post_meta($id, '_cig_payment_history', true) ?: [];
+            $sale_date = $this->calculate_sale_date($nst, $history);
+            $update_data['sale_date'] = $sale_date;
+            $update_format[] = '%s';
+        }
+        
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $wpdb->update(
+            $table_invoices,
+            $update_data,
+            ['id' => $id],
+            $update_format,
+            ['%d']
+        );
+        
+        // 3. Clear Cache
         if ($this->cache) {
             $this->cache->delete('statistics_summary');
             $author_id = get_post_field('post_author', $id);
             $this->cache->delete('user_invoices_' . $author_id);
         }
 
-        // 3. Update Reservations / Stock
+        // 4. Update Reservations / Stock
         $items_old = ($ost === 'fictive') ? [] : $items;
         $items_new = ($nst === 'fictive') ? [] : $items;
 
         $this->stock->update_invoice_reservations($id, $items_old, $items_new);
         
-        // 4. Force post update timestamp
-        wp_update_post([
-            'ID'            => $id, 
-            'post_modified' => current_time('mysql'),
-            'post_modified_gmt' => current_time('mysql', 1)
-        ]);
+        // 5. Force post update timestamp and date if activating
+        if ($nst === 'standard' && $ost === 'fictive') {
+            $history = get_post_meta($id, '_cig_payment_history', true) ?: [];
+            $this->force_update_invoice_date($id, $this->get_latest_payment_date($history));
+        } else {
+            wp_update_post([
+                'ID'            => $id, 
+                'post_modified' => current_time('mysql'),
+                'post_modified_gmt' => current_time('mysql', 1)
+            ]);
+        }
         
         // --- FULL CACHE PURGE (WP + LiteSpeed) ---
         $this->purge_cache($id);
@@ -404,6 +728,7 @@ class CIG_Ajax_Invoices {
 
         $final_date_gmt = get_gmt_from_date($final_date);
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $wpdb->update(
             $wpdb->posts,
             [

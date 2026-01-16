@@ -1,11 +1,34 @@
 <?php
+/**
+ * AJAX Handler for Statistics Operations
+ * Updated: Uses raw SQL queries on custom tables (cig_invoices, cig_payments, cig_customers)
+ * Separates Revenue (sale_date) from Cash Flow (payment date)
+ *
+ * @package CIG
+ * @since 5.0.0
+ */
+
 if (!defined('ABSPATH')) exit;
 
 class CIG_Ajax_Statistics {
     private $security;
 
+    /** @var string Table names */
+    private $table_invoices;
+    private $table_items;
+    private $table_payments;
+    private $table_customers;
+
     public function __construct($security) {
+        global $wpdb;
+        
         $this->security = $security;
+        
+        // Initialize table names
+        $this->table_invoices  = $wpdb->prefix . 'cig_invoices';
+        $this->table_items     = $wpdb->prefix . 'cig_invoice_items';
+        $this->table_payments  = $wpdb->prefix . 'cig_payments';
+        $this->table_customers = $wpdb->prefix . 'cig_customers';
 
         // Existing Hooks
         add_action('wp_ajax_cig_get_statistics_summary', [$this, 'get_statistics_summary']);
@@ -22,7 +45,723 @@ class CIG_Ajax_Statistics {
         add_action('wp_ajax_cig_delete_deposit', [$this, 'delete_deposit']);
     }
 
-    private function get_status_meta_query($status) {
+    /**
+     * Check if custom tables exist
+     *
+     * @return bool
+     */
+    private function tables_exist() {
+        global $wpdb;
+        $result = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $this->table_invoices));
+        return $result === $this->table_invoices;
+    }
+
+    /**
+     * Get statistics summary using raw SQL on custom tables
+     * 
+     * Revenue Calculation: Sum total_amount from cig_invoices WHERE sale_date is within range
+     * Cash Flow (Paid) Calculation: Sum amount from cig_payments WHERE date is within range
+     * 
+     * This separates:
+     * - Revenue (Invoice Date / sale_date) - when invoice was activated/sold
+     * - Cash Flow (Payment Date) - when actual payment was received
+     */
+    public function get_statistics_summary() {
+        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
+        global $wpdb;
+        
+        $date_from = sanitize_text_field($_POST['date_from'] ?? '');
+        $date_to   = sanitize_text_field($_POST['date_to'] ?? '');
+        $status    = sanitize_text_field($_POST['status'] ?? 'standard');
+
+        // Fallback if tables don't exist
+        if (!$this->tables_exist()) {
+            wp_send_json_success([
+                'total_invoices' => 0,
+                'total_revenue' => 0,
+                'total_paid' => 0,
+                'total_company_transfer' => 0,
+                'total_cash' => 0,
+                'total_consignment' => 0,
+                'total_credit' => 0,
+                'total_other' => 0,
+                'total_sold' => 0,
+                'total_reserved' => 0,
+                'total_reserved_invoices' => 0,
+                'total_outstanding' => 0,
+            ]);
+        }
+
+        // ============================================
+        // QUERY 1: REVENUE (Based on sale_date)
+        // Revenue appears on the invoice's sale_date
+        // ============================================
+        $where_revenue = "WHERE i.status != 'fictive'"; // Exclude fictive invoices
+        $params_revenue = [];
+        
+        if ($status === 'fictive') {
+            $where_revenue = "WHERE i.status = 'fictive'";
+        } elseif ($status !== 'all') {
+            $where_revenue = "WHERE (i.status = 'standard' OR i.status IS NULL)";
+        }
+        
+        // Filter by sale_date (NOT created_at)
+        if ($date_from) { 
+            $where_revenue .= " AND i.sale_date >= %s"; 
+            $params_revenue[] = $date_from . ' 00:00:00'; 
+        }
+        if ($date_to) { 
+            $where_revenue .= " AND i.sale_date <= %s"; 
+            $params_revenue[] = $date_to . ' 23:59:59'; 
+        }
+
+        // Revenue = Sum of total_amount from invoices where sale_date is in range
+        $sql_revenue = "SELECT 
+            COUNT(DISTINCT i.id) as invoice_count,
+            COALESCE(SUM(i.total_amount), 0) as total_revenue
+            FROM {$this->table_invoices} i 
+            {$where_revenue}";
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+        $revenue_data = $wpdb->get_row(
+            !empty($params_revenue) ? $wpdb->prepare($sql_revenue, $params_revenue) : $sql_revenue, 
+            ARRAY_A
+        );
+
+        // ============================================
+        // QUERY 2: CASH FLOW (Based on payment date)
+        // Payments appear on the payment's date
+        // ============================================
+        $where_cashflow = "WHERE 1=1";
+        $params_cashflow = [];
+        
+        // Filter by payment date
+        if ($date_from) { 
+            $where_cashflow .= " AND p.date >= %s"; 
+            $params_cashflow[] = $date_from . ' 00:00:00'; 
+        }
+        if ($date_to) { 
+            $where_cashflow .= " AND p.date <= %s"; 
+            $params_cashflow[] = $date_to . ' 23:59:59'; 
+        }
+        
+        // Apply status filter by joining with invoices table
+        if ($status === 'fictive') {
+            $where_cashflow .= " AND i.status = 'fictive'";
+        } elseif ($status !== 'all') {
+            $where_cashflow .= " AND (i.status = 'standard' OR i.status IS NULL)";
+        }
+
+        $sql_cashflow = "SELECT 
+            COALESCE(SUM(p.amount), 0) as total_paid,
+            COALESCE(SUM(CASE WHEN p.method = 'company_transfer' THEN p.amount ELSE 0 END), 0) as total_company_transfer,
+            COALESCE(SUM(CASE WHEN p.method = 'cash' THEN p.amount ELSE 0 END), 0) as total_cash,
+            COALESCE(SUM(CASE WHEN p.method = 'consignment' THEN p.amount ELSE 0 END), 0) as total_consignment,
+            COALESCE(SUM(CASE WHEN p.method = 'credit' THEN p.amount ELSE 0 END), 0) as total_credit,
+            COALESCE(SUM(CASE WHEN p.method = 'other' OR p.method = '' OR p.method IS NULL THEN p.amount ELSE 0 END), 0) as total_other,
+            COUNT(DISTINCT p.invoice_id) as paid_invoices_count
+            FROM {$this->table_payments} p 
+            LEFT JOIN {$this->table_invoices} i ON p.invoice_id = i.id 
+            {$where_cashflow}";
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+        $cashflow_data = $wpdb->get_row(
+            !empty($params_cashflow) ? $wpdb->prepare($sql_cashflow, $params_cashflow) : $sql_cashflow, 
+            ARRAY_A
+        );
+
+        // ============================================
+        // QUERY 3: Item quantities (sold, reserved)
+        // Based on sale_date for items
+        // ============================================
+        $where_items = "WHERE 1=1";
+        $params_items = [];
+        
+        if ($status === 'fictive') {
+            $where_items .= " AND i.status = 'fictive'";
+        } elseif ($status !== 'all') {
+            $where_items .= " AND (i.status = 'standard' OR i.status IS NULL)";
+        }
+        
+        if ($date_from) { 
+            $where_items .= " AND i.sale_date >= %s"; 
+            $params_items[] = $date_from . ' 00:00:00'; 
+        }
+        if ($date_to) { 
+            $where_items .= " AND i.sale_date <= %s"; 
+            $params_items[] = $date_to . ' 23:59:59'; 
+        }
+
+        $sql_items = "SELECT 
+            COALESCE(SUM(CASE WHEN it.item_status = 'sold' THEN it.quantity ELSE 0 END), 0) as total_sold,
+            COALESCE(SUM(CASE WHEN it.item_status = 'reserved' THEN it.quantity ELSE 0 END), 0) as total_reserved,
+            COUNT(DISTINCT CASE WHEN it.item_status = 'reserved' THEN it.invoice_id END) as reserved_invoices_count
+            FROM {$this->table_invoices} i 
+            LEFT JOIN {$this->table_items} it ON i.id = it.invoice_id 
+            {$where_items}";
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+        $items_data = $wpdb->get_row(
+            !empty($params_items) ? $wpdb->prepare($sql_items, $params_items) : $sql_items, 
+            ARRAY_A
+        );
+
+        // ============================================
+        // QUERY 4: Total Outstanding (all time)
+        // ============================================
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $total_outstanding = $wpdb->get_var(
+            "SELECT COALESCE(SUM(total_amount - paid_amount), 0) 
+             FROM {$this->table_invoices} 
+             WHERE (status = 'standard' OR status IS NULL) 
+             AND (total_amount - paid_amount) > 0.01"
+        );
+
+        wp_send_json_success([
+            'total_invoices' => (int)($revenue_data['invoice_count'] ?? 0),
+            'total_revenue' => (float)($revenue_data['total_revenue'] ?? 0),
+            'total_paid' => (float)($cashflow_data['total_paid'] ?? 0),
+            'total_company_transfer' => (float)($cashflow_data['total_company_transfer'] ?? 0),
+            'total_cash' => (float)($cashflow_data['total_cash'] ?? 0),
+            'total_consignment' => (float)($cashflow_data['total_consignment'] ?? 0),
+            'total_credit' => (float)($cashflow_data['total_credit'] ?? 0),
+            'total_other' => (float)($cashflow_data['total_other'] ?? 0),
+            'total_sold' => (int)($items_data['total_sold'] ?? 0),
+            'total_reserved' => (int)($items_data['total_reserved'] ?? 0),
+            'total_reserved_invoices' => (int)($items_data['reserved_invoices_count'] ?? 0),
+            'total_outstanding' => (float)$total_outstanding,
+        ]);
+    }
+
+    /**
+     * Get user statistics using raw SQL
+     */
+    public function get_users_statistics() {
+        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
+        global $wpdb;
+
+        $date_from = sanitize_text_field($_POST['date_from'] ?? '');
+        $date_to   = sanitize_text_field($_POST['date_to'] ?? '');
+        $status    = sanitize_text_field($_POST['status'] ?? 'standard');
+        $search    = sanitize_text_field($_POST['search'] ?? '');
+        $sort_by   = sanitize_text_field($_POST['sort_by'] ?? 'invoice_count');
+        $sort_order = sanitize_text_field($_POST['sort_order'] ?? 'desc');
+
+        // Fallback if tables don't exist
+        if (!$this->tables_exist()) {
+            wp_send_json_success(['users' => []]);
+        }
+
+        // Build WHERE clause
+        $where = "WHERE 1=1";
+        $params = [];
+        
+        if ($status === 'fictive') {
+            $where .= " AND i.status = 'fictive'";
+        } elseif ($status !== 'all') {
+            $where .= " AND (i.status = 'standard' OR i.status IS NULL)";
+        }
+        
+        // Filter by sale_date
+        if ($date_from) { 
+            $where .= " AND i.sale_date >= %s"; 
+            $params[] = $date_from . ' 00:00:00'; 
+        }
+        if ($date_to) { 
+            $where .= " AND i.sale_date <= %s"; 
+            $params[] = $date_to . ' 23:59:59'; 
+        }
+
+        // Build SQL query for user statistics
+        $sql = "SELECT 
+            i.author_id,
+            COUNT(DISTINCT i.id) as invoice_count,
+            COALESCE(SUM(i.total_amount), 0) as total_revenue,
+            MAX(i.sale_date) as last_invoice_date
+            FROM {$this->table_invoices} i 
+            {$where}
+            GROUP BY i.author_id";
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+        $results = $wpdb->get_results(
+            !empty($params) ? $wpdb->prepare($sql, $params) : $sql, 
+            ARRAY_A
+        );
+
+        $users = [];
+        foreach ($results as $row) {
+            $uid = intval($row['author_id']);
+            $u = get_userdata($uid);
+            if (!$u) continue;
+
+            // Get item counts for this user
+            $items_where = "WHERE i.author_id = %d";
+            $items_params = [$uid];
+            
+            if ($status === 'fictive') {
+                $items_where .= " AND i.status = 'fictive'";
+            } elseif ($status !== 'all') {
+                $items_where .= " AND (i.status = 'standard' OR i.status IS NULL)";
+            }
+            
+            if ($date_from) { 
+                $items_where .= " AND i.sale_date >= %s"; 
+                $items_params[] = $date_from . ' 00:00:00'; 
+            }
+            if ($date_to) { 
+                $items_where .= " AND i.sale_date <= %s"; 
+                $items_params[] = $date_to . ' 23:59:59'; 
+            }
+
+            $items_sql = "SELECT 
+                COALESCE(SUM(CASE WHEN it.item_status = 'sold' THEN it.quantity ELSE 0 END), 0) as total_sold,
+                COALESCE(SUM(CASE WHEN it.item_status = 'reserved' THEN it.quantity ELSE 0 END), 0) as total_reserved,
+                COALESCE(SUM(CASE WHEN it.item_status = 'canceled' THEN it.quantity ELSE 0 END), 0) as total_canceled
+                FROM {$this->table_invoices} i 
+                LEFT JOIN {$this->table_items} it ON i.id = it.invoice_id 
+                {$items_where}";
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+            $items_data = $wpdb->get_row($wpdb->prepare($items_sql, $items_params), ARRAY_A);
+
+            $user_data = [
+                'user_id' => $uid,
+                'user_name' => $u->display_name,
+                'user_email' => $u->user_email,
+                'user_avatar' => get_avatar_url($uid, ['size' => 40]),
+                'invoice_count' => (int)$row['invoice_count'],
+                'total_sold' => (int)($items_data['total_sold'] ?? 0),
+                'total_reserved' => (int)($items_data['total_reserved'] ?? 0),
+                'total_canceled' => (int)($items_data['total_canceled'] ?? 0),
+                'total_revenue' => (float)$row['total_revenue'],
+                'last_invoice_date' => $row['last_invoice_date'] ?? ''
+            ];
+
+            // Apply search filter
+            if ($search) {
+                if (stripos($user_data['user_name'], $search) === false && 
+                    stripos($user_data['user_email'], $search) === false) {
+                    continue;
+                }
+            }
+
+            $users[] = $user_data;
+        }
+
+        // Sort results
+        $sort_key = [
+            'invoices' => 'invoice_count',
+            'revenue' => 'total_revenue',
+            'sold' => 'total_sold',
+            'reserved' => 'total_reserved',
+            'date' => 'last_invoice_date'
+        ][$sort_by] ?? 'invoice_count';
+
+        usort($users, function($a, $b) use ($sort_key, $sort_order) {
+            return $sort_order === 'asc' ? ($a[$sort_key] <=> $b[$sort_key]) : ($b[$sort_key] <=> $a[$sort_key]);
+        });
+
+        wp_send_json_success(['users' => $users]);
+    }
+
+    /**
+     * Get user invoices using raw SQL
+     */
+    public function get_user_invoices() {
+        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
+        global $wpdb;
+
+        $user_id = intval($_POST['user_id'] ?? 0);
+        $status = sanitize_text_field($_POST['status'] ?? 'standard');
+        $payment_method = sanitize_text_field($_POST['payment_method'] ?? '');
+        $search = sanitize_text_field($_POST['search'] ?? '');
+
+        // Fallback if tables don't exist
+        if (!$this->tables_exist()) {
+            wp_send_json_success(['invoices' => []]);
+        }
+
+        // Build WHERE clause
+        $where = "WHERE i.author_id = %d";
+        $params = [$user_id];
+        
+        if ($status === 'fictive') {
+            $where .= " AND i.status = 'fictive'";
+        } elseif ($status !== 'all') {
+            $where .= " AND (i.status = 'standard' OR i.status IS NULL)";
+        }
+        
+        if ($search) {
+            $where .= " AND i.invoice_number LIKE %s";
+            $params[] = '%' . $wpdb->esc_like($search) . '%';
+        }
+
+        $sql = "SELECT i.* FROM {$this->table_invoices} i {$where} ORDER BY i.sale_date DESC";
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+        $invoices = $wpdb->get_results($wpdb->prepare($sql, $params), ARRAY_A);
+
+        $result = [];
+        foreach ($invoices as $inv) {
+            $id = intval($inv['id']);
+            
+            // Get items for this invoice
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+            $items = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT item_status, quantity FROM {$this->table_items} WHERE invoice_id = %d",
+                    $id
+                ),
+                ARRAY_A
+            );
+
+            $tot = 0; $s = 0; $r = 0; $c = 0;
+            foreach ($items as $it) {
+                $q = floatval($it['quantity']);
+                $st = strtolower($it['item_status'] ?? 'sold');
+                $tot += $q;
+                if ($st === 'sold') $s += $q;
+                elseif ($st === 'reserved') $r += $q;
+                elseif ($st === 'canceled') $c += $q;
+            }
+
+            // Get payment type from payments
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+            $payment_methods = $wpdb->get_col(
+                $wpdb->prepare(
+                    "SELECT DISTINCT method FROM {$this->table_payments} WHERE invoice_id = %d AND amount > 0",
+                    $id
+                )
+            );
+
+            $pt = count($payment_methods) > 1 ? 'mixed' : (reset($payment_methods) ?: '');
+
+            // Filter by payment method if specified
+            if ($payment_method && $payment_method !== 'all') {
+                if ($pt !== $payment_method && !in_array($payment_method, $payment_methods, true)) {
+                    continue;
+                }
+            }
+
+            $payment_labels = CIG_Invoice::get_payment_types();
+
+            $result[] = [
+                'id' => $id,
+                'invoice_number' => $inv['invoice_number'],
+                'date' => $inv['sale_date'] ?? $inv['created_at'],
+                'invoice_total' => (float)$inv['total_amount'],
+                'payment_type' => $pt,
+                'payment_label' => $payment_labels[$pt] ?? $pt,
+                'total_products' => $tot,
+                'sold_items' => $s,
+                'reserved_items' => $r,
+                'canceled_items' => $c,
+                'view_url' => get_permalink($id),
+                'edit_url' => add_query_arg('edit', '1', get_permalink($id))
+            ];
+        }
+
+        wp_send_json_success(['invoices' => $result]);
+    }
+
+    /**
+     * Get invoices by filters using raw SQL on custom tables
+     * Filters by sale_date and joins with cig_customers for names
+     * Aggregates payment methods from cig_payments
+     */
+    public function get_invoices_by_filters() {
+        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
+        global $wpdb;
+        
+        $status = sanitize_text_field($_POST['status'] ?? 'standard');
+        $mf = sanitize_text_field($_POST['payment_method'] ?? '');
+        $date_from = sanitize_text_field($_POST['date_from'] ?? '');
+        $date_to = sanitize_text_field($_POST['date_to'] ?? '');
+
+        // Fallback if tables don't exist - use legacy WP_Query method
+        if (!$this->tables_exist()) {
+            $this->get_invoices_by_filters_legacy();
+            return;
+        }
+        
+        $method_labels = [
+            'company_transfer' => __('კომპანიის ჩარიცხვა', 'cig'), 
+            'cash' => __('ქეში', 'cig'), 
+            'consignment' => __('კონსიგნაცია', 'cig'), 
+            'credit' => __('განვადება', 'cig'), 
+            'other' => __('სხვა', 'cig')
+        ];
+
+        // Build WHERE clause - filter by sale_date
+        $where = "WHERE 1=1";
+        $params = [];
+        
+        if ($status === 'fictive') {
+            $where .= " AND i.status = 'fictive'";
+        } elseif ($status === 'outstanding') {
+            $where .= " AND (i.status = 'standard' OR i.status IS NULL) AND (i.total_amount - i.paid_amount) > 0.01";
+        } elseif ($status !== 'all') {
+            $where .= " AND (i.status = 'standard' OR i.status IS NULL)";
+        }
+        
+        // Filter by sale_date (NOT created_at)
+        if ($date_from) { 
+            $where .= " AND i.sale_date >= %s"; 
+            $params[] = $date_from . ' 00:00:00'; 
+        }
+        if ($date_to) { 
+            $where .= " AND i.sale_date <= %s"; 
+            $params[] = $date_to . ' 23:59:59'; 
+        }
+
+        // Main query: Join with customers for names
+        $sql = "SELECT 
+            i.id,
+            i.invoice_number,
+            i.total_amount,
+            i.paid_amount,
+            i.status,
+            i.sale_date,
+            i.author_id,
+            c.name as customer_name
+            FROM {$this->table_invoices} i
+            LEFT JOIN {$this->table_customers} c ON i.customer_id = c.id
+            {$where}
+            ORDER BY i.sale_date DESC
+            LIMIT 200";
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+        $invoices = $wpdb->get_results(
+            !empty($params) ? $wpdb->prepare($sql, $params) : $sql, 
+            ARRAY_A
+        );
+
+        $rows = [];
+        foreach ($invoices as $inv) {
+            $id = intval($inv['id']);
+
+            // Check for reserved items if filtering for reserved_invoices
+            if ($mf === 'reserved_invoices') {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+                $has_reserved = $wpdb->get_var(
+                    $wpdb->prepare(
+                        "SELECT COUNT(*) FROM {$this->table_items} WHERE invoice_id = %d AND item_status = 'reserved'",
+                        $id
+                    )
+                );
+                if (!$has_reserved) continue;
+            }
+
+            // Get payment history from cig_payments
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+            $payments = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT amount, date, method FROM {$this->table_payments} WHERE invoice_id = %d ORDER BY date ASC",
+                    $id
+                ),
+                ARRAY_A
+            );
+
+            $inv_m = [];
+            $has_target = false;
+            $payment_details = [];
+
+            foreach ($payments as $p) {
+                $m = $p['method'] ?? 'other';
+                $amt = (float)$p['amount'];
+                $pay_date = $p['date'] ?? '';
+
+                // Payment method filter
+                if ($mf && $mf !== 'all' && $mf !== 'reserved_invoices') {
+                    if ($m === $mf && $amt > 0.001) $has_target = true;
+                }
+
+                $inv_m[] = $method_labels[$m] ?? $m;
+
+                // Collect individual payment details for breakdown
+                if ($amt > 0.001) {
+                    $payment_details[] = [
+                        'amount' => $amt,
+                        'date' => $pay_date ? substr($pay_date, 0, 10) : '',
+                        'method' => $method_labels[$m] ?? $m
+                    ];
+                }
+            }
+
+            // Filter validation: if specific method is requested but not found
+            if ($mf && $mf !== 'all' && $mf !== 'reserved_invoices' && !$has_target) continue;
+
+            // Build detailed payment breakdown HTML
+            $bd = '';
+            foreach ($payment_details as $pd_item) {
+                $bd .= '<div style="font-size:11px;color:#333;margin-bottom:2px;">';
+                $bd .= number_format($pd_item['amount'], 2) . ' ₾';
+                $has_date = !empty($pd_item['date']);
+                $has_method = !empty($pd_item['method']);
+                if ($has_date || $has_method) {
+                    $bd .= ' <span style="color:#666;">(';
+                    if ($has_date) {
+                        $bd .= esc_html($pd_item['date']);
+                    }
+                    if ($has_date && $has_method) {
+                        $bd .= ' - ';
+                    }
+                    if ($has_method) {
+                        $bd .= esc_html($pd_item['method']);
+                    }
+                    $bd .= ')</span>';
+                }
+                $bd .= '</div>';
+            }
+            if ($bd) $bd = '<div style="margin-top:4px;">' . $bd . '</div>';
+
+            $tot = (float)$inv['total_amount'];
+            $pd = (float)$inv['paid_amount'];
+
+            // Get author name
+            $author_name = '';
+            if ($inv['author_id']) {
+                $author = get_userdata(intval($inv['author_id']));
+                $author_name = $author ? $author->display_name : '';
+            }
+
+            $rows[] = [
+                'id' => $id,
+                'invoice_number' => $inv['invoice_number'],
+                'customer' => $inv['customer_name'] ?: '—',
+                'payment_methods' => implode(', ', array_unique($inv_m)),
+                'total' => $tot,
+                'paid' => $pd,
+                'paid_breakdown' => $bd,
+                'due' => max(0, $tot - $pd),
+                'author' => $author_name,
+                'date' => $inv['sale_date'] ? substr($inv['sale_date'], 0, 16) : '',
+                'status' => $inv['status'],
+                'view_url' => get_permalink($id),
+                'edit_url' => add_query_arg('edit', '1', get_permalink($id))
+            ];
+        }
+
+        wp_send_json_success(['invoices' => $rows]);
+    }
+
+    /**
+     * Legacy fallback for get_invoices_by_filters using WP_Query
+     * Used when custom tables don't exist yet
+     */
+    private function get_invoices_by_filters_legacy() {
+        $status = sanitize_text_field($_POST['status'] ?? 'standard');
+        $mf = sanitize_text_field($_POST['payment_method'] ?? '');
+        $args = ['post_type'=>'invoice', 'post_status'=>'publish', 'posts_per_page'=>200, 'orderby'=>'date', 'order'=>'DESC'];
+        
+        if (!empty($_POST['date_from'])) {
+            $args['date_query'] = [['after'=>$_POST['date_from'].' 00:00:00', 'before'=>$_POST['date_to'].' 23:59:59', 'inclusive'=>true]];
+        }
+        
+        $mq = $this->get_status_meta_query_legacy($status); 
+        if($mq) $args['meta_query'] = $mq;
+        
+        $method_labels = [
+            'company_transfer'=>__('კომპანიის ჩარიცხვა','cig'), 
+            'cash'=>__('ქეში','cig'), 
+            'consignment'=>__('კონსიგნაცია','cig'), 
+            'credit'=>__('განვადება','cig'), 
+            'other'=>__('სხვა','cig')
+        ];
+        
+        $rows=[];
+        foreach((new WP_Query($args))->posts as $p) {
+            $id=$p->ID;
+            
+            if ($mf === 'reserved_invoices') {
+                $items = get_post_meta($id, '_cig_items', true) ?: [];
+                $has_res = false;
+                foreach ($items as $it) {
+                    if (strtolower($it['status'] ?? '') === 'reserved') { 
+                        $has_res = true; 
+                        break; 
+                    }
+                }
+                if (!$has_res) continue;
+            }
+
+            $hist=get_post_meta($id,'_cig_payment_history',true);
+            $inv_m=[]; $has_target=false;
+            $payment_details = [];
+            
+            if(is_array($hist)) {
+                foreach($hist as $h) {
+                    $m=$h['method']??'other'; 
+                    $amt=(float)$h['amount'];
+                    $pay_date = $h['date'] ?? '';
+                    
+                    if($mf && $mf !== 'all' && $mf !== 'reserved_invoices') {
+                        if($m===$mf && $amt>0.001) $has_target=true;
+                    }
+                    
+                    $inv_m[]=$method_labels[$m]??$m;
+                    
+                    if ($amt > 0.001) {
+                        $payment_details[] = [
+                            'amount' => $amt,
+                            'date' => $pay_date,
+                            'method' => $method_labels[$m] ?? $m
+                        ];
+                    }
+                }
+            }
+
+            if($mf && $mf !== 'all' && $mf !== 'reserved_invoices' && !$has_target) continue;
+            
+            $bd=''; 
+            foreach($payment_details as $pd_item) {
+                $bd .= '<div style="font-size:11px;color:#333;margin-bottom:2px;">';
+                $bd .= number_format($pd_item['amount'], 2) . ' ₾';
+                $has_date = !empty($pd_item['date']);
+                $has_method = !empty($pd_item['method']);
+                if ($has_date || $has_method) {
+                    $bd .= ' <span style="color:#666;">(';
+                    if ($has_date) {
+                        $bd .= esc_html($pd_item['date']);
+                    }
+                    if ($has_date && $has_method) {
+                        $bd .= ' - ';
+                    }
+                    if ($has_method) {
+                        $bd .= esc_html($pd_item['method']);
+                    }
+                    $bd .= ')</span>';
+                }
+                $bd .= '</div>';
+            }
+            if($bd) $bd='<div style="margin-top:4px;">'.$bd.'</div>';
+            
+            $tot=(float)get_post_meta($id,'_cig_invoice_total',true);
+            $pd=(float)get_post_meta($id,'_cig_payment_paid_amount',true);
+            
+            $rows[]=[
+                'id'=>$id, 
+                'invoice_number'=>get_post_meta($id,'_cig_invoice_number',true), 
+                'customer'=>get_post_meta($id,'_cig_buyer_name',true)?:'—', 
+                'payment_methods'=>implode(', ',array_unique($inv_m)), 
+                'total'=>$tot, 
+                'paid'=>$pd, 
+                'paid_breakdown'=>$bd, 
+                'due'=>max(0,$tot-$pd), 
+                'author'=>get_the_author_meta('display_name',$p->post_author), 
+                'date'=>get_the_date('Y-m-d H:i',$p), 
+                'status'=>get_post_meta($id,'_cig_invoice_status',true), 
+                'view_url'=>get_permalink($id), 
+                'edit_url'=>add_query_arg('edit','1',get_permalink($id))
+            ];
+        }
+        wp_send_json_success(['invoices'=>$rows]);
+    }
+
+    /**
+     * Legacy meta query builder for fallback
+     */
+    private function get_status_meta_query_legacy($status) {
         if ($status === 'all') return [];
         if ($status === 'fictive') return [['key' => '_cig_invoice_status', 'value' => 'fictive', 'compare' => '=']];
         if ($status === 'outstanding') {
@@ -35,248 +774,113 @@ class CIG_Ajax_Statistics {
         return [['relation' => 'OR', ['key' => '_cig_invoice_status', 'value' => 'standard', 'compare' => '='], ['key' => '_cig_invoice_status', 'compare' => 'NOT EXISTS']]];
     }
 
-    public function get_statistics_summary() {
-        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
-        global $wpdb;
-        
-        $date_from = sanitize_text_field($_POST['date_from'] ?? '');
-        $date_to   = sanitize_text_field($_POST['date_to'] ?? '');
-        $status    = sanitize_text_field($_POST['status'] ?? 'standard');
-
-        $table_payments = $wpdb->prefix . 'cig_payments';
-        $table_invoices = $wpdb->prefix . 'cig_invoices';
-        $table_items    = $wpdb->prefix . 'cig_invoice_items';
-
-        // 1. Payment Filters (For Money)
-        $where_pay = "WHERE 1=1"; $params_pay = [];
-        if ($date_from) { $where_pay .= " AND p.date >= %s"; $params_pay[] = $date_from; }
-        if ($date_to)   { $where_pay .= " AND p.date <= %s"; $params_pay[] = $date_to; }
-        $where_pay .= ($status === 'fictive') ? " AND i.type = 'fictive'" : " AND (i.type = 'standard' OR i.type IS NULL)";
-
-        // 2. Invoice Filters (For Counts/Reserved)
-        $where_inv = "WHERE 1=1"; $params_inv = [];
-        if ($date_from) { 
-            $where_inv .= " AND COALESCE(i.activation_date, i.created_at) >= %s"; 
-            $params_inv[] = $date_from . ' 00:00:00'; 
-        }
-        if ($date_to) { 
-            $where_inv .= " AND COALESCE(i.activation_date, i.created_at) <= %s"; 
-            $params_inv[] = $date_to . ' 23:59:59'; 
-        }
-        $where_inv .= ($status === 'fictive') ? " AND i.type = 'fictive'" : " AND i.type = 'standard'";
-
-        // QUERY 1: Financials
-        $sql_money = "SELECT SUM(p.amount) as total_paid,
-                    SUM(CASE WHEN p.payment_method = 'company_transfer' THEN p.amount ELSE 0 END) as total_company_transfer,
-                    SUM(CASE WHEN p.payment_method = 'cash' THEN p.amount ELSE 0 END) as total_cash,
-                    SUM(CASE WHEN p.payment_method = 'consignment' THEN p.amount ELSE 0 END) as total_consignment,
-                    SUM(CASE WHEN p.payment_method = 'credit' THEN p.amount ELSE 0 END) as total_credit,
-                    SUM(CASE WHEN p.payment_method = 'other' OR p.payment_method = '' OR p.payment_method IS NULL THEN p.amount ELSE 0 END) as total_other,
-                    COUNT(DISTINCT p.invoice_id) as paid_invoices_count
-                FROM $table_payments p LEFT JOIN $table_invoices i ON p.invoice_id = i.id $where_pay";
-        $money = $wpdb->get_row((!empty($params_pay)) ? $wpdb->prepare($sql_money, $params_pay) : $sql_money, ARRAY_A);
-
-        // QUERY 2: Quantities
-        $sql_items = "SELECT COUNT(DISTINCT i.id) as total_invoices_count,
-                        SUM(CASE WHEN it.status = 'sold' THEN it.qty ELSE 0 END) as total_sold,
-                        SUM(CASE WHEN it.status = 'reserved' THEN it.qty ELSE 0 END) as total_reserved,
-                        COUNT(DISTINCT CASE WHEN it.status = 'reserved' THEN it.invoice_id END) as reserved_invoices_count
-                      FROM $table_invoices i LEFT JOIN $table_items it ON i.id = it.invoice_id $where_inv";
-        $items = $wpdb->get_row((!empty($params_inv)) ? $wpdb->prepare($sql_items, $params_inv) : $sql_items, ARRAY_A);
-
-        $total_outstanding = $wpdb->get_var("SELECT SUM(balance) FROM $table_invoices WHERE type = 'standard' AND balance > 0.01");
-
-        wp_send_json_success([
-            'total_invoices' => (int)($money['paid_invoices_count'] ?? 0), // Cash Basis: count invoices with payments in date range
-            'total_revenue' => (float)($money['total_paid'] ?? 0),
-            'total_paid' => (float)($money['total_paid'] ?? 0),
-            'total_company_transfer' => (float)($money['total_company_transfer'] ?? 0),
-            'total_cash' => (float)($money['total_cash'] ?? 0),
-            'total_consignment' => (float)($money['total_consignment'] ?? 0),
-            'total_credit' => (float)($money['total_credit'] ?? 0),
-            'total_other' => (float)($money['total_other'] ?? 0),
-            'total_sold' => (int)($items['total_sold'] ?? 0),
-            'total_reserved' => (int)($items['total_reserved'] ?? 0),
-            'total_reserved_invoices' => (int)($items['reserved_invoices_count'] ?? 0),
-            'total_outstanding' => (float)$total_outstanding,
-        ]);
-    }
-
-    public function get_users_statistics() {
-        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
-        $args = ['post_type' => 'invoice', 'post_status' => 'publish', 'posts_per_page' => -1, 'fields' => 'ids'];
-        if (!empty($_POST['date_from'])) $args['date_query'] = [['after' => $_POST['date_from'].' 00:00:00', 'before' => $_POST['date_to'].' 23:59:59', 'inclusive' => true]];
-        $mq = $this->get_status_meta_query(sanitize_text_field($_POST['status'] ?? 'standard'));
-        if ($mq) $args['meta_query'] = $mq;
-        $users = [];
-        foreach ((new WP_Query($args))->posts as $id) {
-            $uid = get_post_field('post_author', $id);
-            if (!isset($users[$uid])) {
-                $u = get_userdata($uid); if(!$u) continue;
-                $users[$uid] = ['user_id'=>$uid, 'user_name'=>$u->display_name, 'user_email'=>$u->user_email, 'user_avatar'=>get_avatar_url($uid,['size'=>40]), 'invoice_count'=>0, 'total_sold'=>0, 'total_reserved'=>0, 'total_canceled'=>0, 'total_revenue'=>0, 'last_invoice_date'=>''];
-            }
-            $users[$uid]['invoice_count']++;
-            $users[$uid]['total_revenue'] += (float)get_post_meta($id, '_cig_invoice_total', true);
-            foreach (get_post_meta($id, '_cig_items', true)?:[] as $it) {
-                $q=floatval($it['qty']); $s=strtolower($it['status']??'sold');
-                if($s==='sold') $users[$uid]['total_sold']+=$q; elseif($s==='reserved') $users[$uid]['total_reserved']+=$q; elseif($s==='canceled') $users[$uid]['total_canceled']+=$q;
-            }
-            $d = get_post_field('post_date', $id);
-            if ($d > $users[$uid]['last_invoice_date']) $users[$uid]['last_invoice_date'] = $d;
-        }
-        $search = sanitize_text_field($_POST['search']??'');
-        if($search) $users = array_filter($users, function($u)use($search){ return stripos($u['user_name'],$search)!==false || stripos($u['user_email'],$search)!==false; });
-        
-        $sb = $_POST['sort_by'] ?? 'invoice_count'; $so = $_POST['sort_order'] ?? 'desc';
-        usort($users, function($a,$b) use ($sb,$so){ 
-            $k = ['invoices'=>'invoice_count','revenue'=>'total_revenue','sold'=>'total_sold','reserved'=>'total_reserved','date'=>'last_invoice_date'][$sb] ?? 'invoice_count';
-            return $so==='asc' ? ($a[$k]<=>$b[$k]) : ($b[$k]<=>$a[$k]); 
-        });
-        wp_send_json_success(['users'=>array_values($users)]);
-    }
-
-    public function get_user_invoices() {
-        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
-        $args = ['post_type'=>'invoice', 'post_status'=>'publish', 'author'=>intval($_POST['user_id']), 'posts_per_page'=>-1, 'orderby'=>'date', 'order'=>'DESC'];
-        $mq = $this->get_status_meta_query($_POST['status']??'standard');
-        if(!empty($_POST['payment_method'])) $mq[] = ['key'=>'_cig_payment_type', 'value'=>sanitize_text_field($_POST['payment_method']), 'compare'=>'='];
-        if(!empty($_POST['search'])) $mq[] = ['key'=>'_cig_invoice_number', 'value'=>sanitize_text_field($_POST['search']), 'compare'=>'LIKE'];
-        if($mq) $args['meta_query'] = $mq;
-        $invoices = [];
-        foreach ((new WP_Query($args))->posts as $post) {
-            $id = $post->ID;
-            $items = get_post_meta($id, '_cig_items', true)?:[];
-            $tot=0; $s=0; $r=0; $c=0; foreach($items as $it){ $q=floatval($it['qty']); $tot+=$q; $st=strtolower($it['status']??'sold'); if($st==='sold')$s+=$q; elseif($st==='reserved')$r+=$q; else $c+=$q; }
-            $pt = get_post_meta($id, '_cig_payment_type', true);
-            $invoices[] = ['id'=>$id, 'invoice_number'=>get_post_meta($id,'_cig_invoice_number',true), 'date'=>get_the_date('Y-m-d H:i:s',$id), 'invoice_total'=>(float)get_post_meta($id,'_cig_invoice_total',true), 'payment_type'=>$pt, 'payment_label'=>CIG_Invoice::get_payment_types()[$pt]??$pt, 'total_products'=>$tot, 'sold_items'=>$s, 'reserved_items'=>$r, 'canceled_items'=>$c, 'view_url'=>get_permalink($id), 'edit_url'=>add_query_arg('edit','1',get_permalink($id))];
-        }
-        wp_send_json_success(['invoices'=>$invoices]);
-    }
-
-    public function get_invoices_by_filters() {
-    $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
-    
-    $status = sanitize_text_field($_POST['status'] ?? 'standard');
-    $mf = sanitize_text_field($_POST['payment_method'] ?? '');
-    $args = ['post_type'=>'invoice', 'post_status'=>'publish', 'posts_per_page'=>200, 'orderby'=>'date', 'order'=>'DESC'];
-    
-    if (!empty($_POST['date_from'])) {
-        $args['date_query'] = [['after'=>$_POST['date_from'].' 00:00:00', 'before'=>$_POST['date_to'].' 23:59:59', 'inclusive'=>true]];
-    }
-    
-    $mq = $this->get_status_meta_query($status); 
-    if($mq) $args['meta_query'] = $mq;
-    
-    $method_labels = [
-        'company_transfer'=>__('კომპანიის ჩარიცხვა','cig'), 
-        'cash'=>__('ქეში','cig'), 
-        'consignment'=>__('კონსიგნაცია','cig'), 
-        'credit'=>__('განვადება','cig'), 
-        'other'=>__('სხვა','cig')
-    ];
-    
-    $rows=[];
-    foreach((new WP_Query($args))->posts as $p) {
-        $id=$p->ID;
-        
-        // --- ახალი ლოგიკა: რეზერვაციის შემოწმება ---
-        if ($mf === 'reserved_invoices') {
-            $items = get_post_meta($id, '_cig_items', true) ?: [];
-            $has_res = false;
-            foreach ($items as $it) {
-                if (strtolower($it['status'] ?? '') === 'reserved') { 
-                    $has_res = true; 
-                    break; 
-                }
-            }
-            if (!$has_res) continue; // თუ რეზერვი არ არის, გამოტოვოს ეს ინვოისი
-        }
-        // ----------------------------------------
-
-        $hist=get_post_meta($id,'_cig_payment_history',true);
-        $inv_m=[]; $sums=[]; $has_target=false;
-        $payment_details = []; // Individual payment transactions for breakdown
-        
-        if(is_array($hist)) {
-            foreach($hist as $h) {
-                $m=$h['method']??'other'; 
-                $amt=(float)$h['amount'];
-                $pay_date = $h['date'] ?? '';
-                
-                // გადახდის მეთოდის ფილტრი (მუშაობს მხოლოდ მაშინ, თუ mf არ არის reserved_invoices)
-                if($mf && $mf !== 'all' && $mf !== 'reserved_invoices') {
-                    if($m===$mf && $amt>0.001) $has_target=true;
-                }
-                
-                $inv_m[]=$method_labels[$m]??$m; 
-                if(!isset($sums[$m])) $sums[$m]=0; 
-                $sums[$m]+=$amt;
-                
-                // Collect individual payment details for breakdown
-                if ($amt > 0.001) {
-                    $payment_details[] = [
-                        'amount' => $amt,
-                        'date' => $pay_date,
-                        'method' => $method_labels[$m] ?? $m
-                    ];
-                }
-            }
-        }
-
-        // ფილტრის ვალიდაცია: თუ კონკრეტულ მეთოდს ვეძებთ და არ არის
-        if($mf && $mf !== 'all' && $mf !== 'reserved_invoices' && !$has_target) continue;
-        
-        // Build detailed payment breakdown HTML with individual transactions
-        $bd=''; 
-        foreach($payment_details as $pd_item) {
-            $bd .= '<div style="font-size:11px;color:#333;margin-bottom:2px;">';
-            $bd .= number_format($pd_item['amount'], 2) . ' ₾';
-            $has_date = !empty($pd_item['date']);
-            $has_method = !empty($pd_item['method']);
-            if ($has_date || $has_method) {
-                $bd .= ' <span style="color:#666;">(';
-                if ($has_date) {
-                    $bd .= esc_html($pd_item['date']);
-                }
-                if ($has_date && $has_method) {
-                    $bd .= ' - ';
-                }
-                if ($has_method) {
-                    $bd .= esc_html($pd_item['method']);
-                }
-                $bd .= ')</span>';
-            }
-            $bd .= '</div>';
-        }
-        if($bd) $bd='<div style="margin-top:4px;">'.$bd.'</div>';
-        
-        $tot=(float)get_post_meta($id,'_cig_invoice_total',true);
-        $pd=(float)get_post_meta($id,'_cig_payment_paid_amount',true);
-        
-        $rows[]=[
-            'id'=>$id, 
-            'invoice_number'=>get_post_meta($id,'_cig_invoice_number',true), 
-            'customer'=>get_post_meta($id,'_cig_buyer_name',true)?:'—', 
-            'payment_methods'=>implode(', ',array_unique($inv_m)), 
-            'total'=>$tot, 
-            'paid'=>$pd, 
-            'paid_breakdown'=>$bd, 
-            'due'=>max(0,$tot-$pd), 
-            'author'=>get_the_author_meta('display_name',$p->post_author), 
-            'date'=>get_the_date('Y-m-d H:i',$p), 
-            'status'=>get_post_meta($id,'_cig_invoice_status',true), 
-            'view_url'=>get_permalink($id), 
-            'edit_url'=>add_query_arg('edit','1',get_permalink($id))
-        ];
-    }
-    wp_send_json_success(['invoices'=>$rows]);
-}
-
+    /**
+     * Get products by filters using raw SQL
+     */
     public function get_products_by_filters() {
         $this->security->verify_ajax_request('cig_nonce', 'nonce', 'edit_posts');
+        global $wpdb;
+
+        $date_from = sanitize_text_field($_POST['date_from'] ?? '');
+        $date_to = sanitize_text_field($_POST['date_to'] ?? '');
+        $invoice_status = sanitize_text_field($_POST['invoice_status'] ?? 'standard');
+        $item_status = sanitize_text_field($_POST['status'] ?? 'sold');
+        $payment_method = sanitize_text_field($_POST['payment_method'] ?? '');
+
+        // Fallback if tables don't exist
+        if (!$this->tables_exist()) {
+            $this->get_products_by_filters_legacy();
+            return;
+        }
+
+        // Build WHERE clause
+        $where = "WHERE 1=1";
+        $params = [];
+        
+        // Filter by invoice status
+        if ($invoice_status === 'fictive') {
+            $where .= " AND i.status = 'fictive'";
+        } elseif ($invoice_status !== 'all') {
+            $where .= " AND (i.status = 'standard' OR i.status IS NULL)";
+        }
+        
+        // Filter by sale_date
+        if ($date_from) { 
+            $where .= " AND i.sale_date >= %s"; 
+            $params[] = $date_from . ' 00:00:00'; 
+        }
+        if ($date_to) { 
+            $where .= " AND i.sale_date <= %s"; 
+            $params[] = $date_to . ' 23:59:59'; 
+        }
+        
+        // Filter by item status
+        $where .= " AND it.item_status = %s";
+        $params[] = $item_status;
+
+        // Main query
+        $sql = "SELECT 
+            it.product_name as name,
+            it.sku,
+            it.quantity as qty,
+            i.id as invoice_id,
+            i.invoice_number,
+            i.sale_date,
+            i.author_id
+            FROM {$this->table_items} it
+            INNER JOIN {$this->table_invoices} i ON it.invoice_id = i.id
+            {$where}
+            ORDER BY i.sale_date DESC
+            LIMIT 500";
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.PreparedSQL.NotPrepared
+        $items = $wpdb->get_results($wpdb->prepare($sql, $params), ARRAY_A);
+
+        $rows = [];
+        foreach ($items as $it) {
+            $id = intval($it['invoice_id']);
+            
+            // Get author name
+            $author_name = '';
+            if ($it['author_id']) {
+                $author = get_userdata(intval($it['author_id']));
+                $author_name = $author ? $author->display_name : '';
+            }
+
+            // Get image from post meta (still stored there for legacy support)
+            $items_meta = get_post_meta($id, '_cig_items', true) ?: [];
+            $image = '';
+            foreach ($items_meta as $item_meta) {
+                if (($item_meta['sku'] ?? '') === $it['sku'] || ($item_meta['name'] ?? '') === $it['name']) {
+                    $image = $item_meta['image'] ?? '';
+                    break;
+                }
+            }
+
+            $rows[] = [
+                'name' => $it['name'] ?? '',
+                'sku' => $it['sku'] ?? '',
+                'image' => $image,
+                'qty' => floatval($it['qty']),
+                'invoice_id' => $id,
+                'invoice_number' => $it['invoice_number'],
+                'author_name' => $author_name,
+                'date' => $it['sale_date'] ?? '',
+                'view_url' => get_permalink($id),
+                'edit_url' => add_query_arg('edit', '1', get_permalink($id))
+            ];
+        }
+
+        wp_send_json_success(['products' => $rows]);
+    }
+
+    /**
+     * Legacy fallback for get_products_by_filters
+     */
+    private function get_products_by_filters_legacy() {
         $args = ['post_type'=>'invoice', 'post_status'=>'publish', 'posts_per_page'=>-1, 'fields'=>'ids', 'orderby'=>'date', 'order'=>'DESC'];
         if (!empty($_POST['date_from'])) $args['date_query'] = [['after'=>$_POST['date_from'].' 00:00:00', 'before'=>$_POST['date_to'].' 23:59:59', 'inclusive'=>true]];
-        $mq = $this->get_status_meta_query($_POST['invoice_status']??'standard');
+        $mq = $this->get_status_meta_query_legacy($_POST['invoice_status']??'standard');
         if(!empty($_POST['payment_method']) && $_POST['payment_method']!=='all') $mq[]=['key'=>'_cig_payment_type', 'value'=>$_POST['payment_method'], 'compare'=>'='];
         if($mq) $args['meta_query']=$mq;
         
