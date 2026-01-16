@@ -457,6 +457,9 @@ class CIG_Invoice_Manager {
                 $total = $qty * $price;
             }
 
+            // Get image URL and sanitize
+            $image = esc_url_raw($item['image'] ?? '');
+
             $result = $wpdb->insert(
                 $this->table_items,
                 [
@@ -469,9 +472,10 @@ class CIG_Invoice_Manager {
                     'total'             => $total,
                     'item_status'       => sanitize_text_field($item['item_status'] ?? $item['status'] ?? 'none'),
                     'warranty_duration' => sanitize_text_field($item['warranty_duration'] ?? $item['warranty'] ?? ''),
-                    'reservation_days'  => intval($item['reservation_days'] ?? 0)
+                    'reservation_days'  => intval($item['reservation_days'] ?? 0),
+                    'image'             => $image
                 ],
-                ['%d', '%d', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%d']
+                ['%d', '%d', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%d', '%s']
             );
 
             if (false === $result) {
