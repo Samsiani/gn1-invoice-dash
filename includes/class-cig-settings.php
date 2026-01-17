@@ -184,24 +184,6 @@ class CIG_Settings {
             'cig-invoice-settings',
             'cig_warranty_section'
         );
-
-        // Invoice Number Settings (NEW SECTION)
-        add_settings_section(
-            'cig_invoice_number_section',
-            __('Invoice Number Settings', 'cig'),
-            function () {
-                echo '<p>' . esc_html__('Configure the starting invoice number sequence.', 'cig') . '</p>';
-            },
-            'cig-invoice-settings'
-        );
-
-        add_settings_field(
-            'cig_starting_invoice_number',
-            __('Starting Invoice Number', 'cig'),
-            [$this, 'render_starting_invoice_number_field'],
-            'cig-invoice-settings',
-            'cig_invoice_number_section'
-        );
     }
 
     /**
@@ -250,12 +232,6 @@ class CIG_Settings {
         // Warranty Text (NEW) - Allow HTML
         if (isset($input['warranty_text'])) {
             $output['warranty_text'] = wp_kses_post($input['warranty_text']);
-        }
-
-        // Starting Invoice Number - Allow letters and numbers (e.g., N25000088)
-        if (isset($input['starting_invoice_number'])) {
-            $starting_number = preg_replace('/[^A-Za-z0-9]/', '', $input['starting_invoice_number']);
-            $output['starting_invoice_number'] = $starting_number;
         }
 
         // Bust cache if any
@@ -390,26 +366,6 @@ class CIG_Settings {
         
         echo '<textarea name="cig_settings[warranty_text]" rows="10" cols="50" class="large-text code">' . esc_textarea($text) . '</textarea>';
         echo '<p class="description">' . esc_html__('Enter the terms and conditions text for the warranty sheet. HTML is allowed.', 'cig') . '</p>';
-    }
-
-    /**
-     * Render starting invoice number field
-     */
-    public function render_starting_invoice_number_field() {
-        $opts = get_option('cig_settings', []);
-        $current_value = $opts['starting_invoice_number'] ?? '';
-        
-        // If no value set, show default from constants
-        $placeholder = CIG_INVOICE_NUMBER_PREFIX . str_pad(CIG_INVOICE_NUMBER_BASE, 8, '0', STR_PAD_LEFT);
-        
-        printf(
-            '<input type="text" name="cig_settings[starting_invoice_number]" value="%s" class="regular-text" placeholder="%s" />',
-            esc_attr($current_value),
-            esc_attr($placeholder)
-        );
-        echo '<p class="description">' . 
-             esc_html__('Enter the starting invoice number (e.g., N25000088). This number will be used when the invoice table is empty. Format: prefix (letters) + numeric sequence.', 'cig') .
-             '</p>';
     }
 
     /**
