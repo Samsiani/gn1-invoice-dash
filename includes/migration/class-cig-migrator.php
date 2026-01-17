@@ -324,6 +324,21 @@ class CIG_Migrator {
             $created_at = $post->post_date;
             $author_id  = $post->post_author;
 
+            // Retrieve full buyer metadata and sync customer to get customer_id
+            $buyer_data = [
+                'name'    => $buyer_name,
+                'tax_id'  => $buyer_tax_id,
+                'address' => get_post_meta($invoice_id, '_cig_buyer_address', true),
+                'phone'   => get_post_meta($invoice_id, '_cig_buyer_phone', true),
+                'email'   => get_post_meta($invoice_id, '_cig_buyer_email', true),
+            ];
+
+            $customer_id = 0;
+            if (class_exists('CIG_Customers')) {
+                $cust = new CIG_Customers();
+                $customer_id = $cust->sync_customer($buyer_data);
+            }
+
             // Check if invoice already exists in custom table
             $exists = $wpdb->get_var($wpdb->prepare(
                 "SELECT id FROM $table_invoices WHERE invoice_number = %s",
@@ -338,6 +353,7 @@ class CIG_Migrator {
                         'invoice_number'   => $invoice_number,
                         'status'           => $invoice_status,
                         'lifecycle_status' => $lifecycle_status,
+                        'customer_id'      => intval($customer_id),
                         'total_amount'     => $total_amount,
                         'paid_amount'      => $paid_amount,
                         'sale_date'        => $sale_date,
@@ -346,7 +362,7 @@ class CIG_Migrator {
                         'author_id'        => $author_id,
                     ],
                     ['id' => $exists],
-                    ['%s', '%s', '%s', '%f', '%f', '%s', '%s', '%d', '%d'],
+                    ['%s', '%s', '%s', '%d', '%f', '%f', '%s', '%s', '%d', '%d'],
                     ['%d']
                 );
                 $new_invoice_id = $exists;
@@ -358,6 +374,7 @@ class CIG_Migrator {
                         'invoice_number'   => $invoice_number,
                         'status'           => $invoice_status,
                         'lifecycle_status' => $lifecycle_status,
+                        'customer_id'      => intval($customer_id),
                         'total_amount'     => $total_amount,
                         'paid_amount'      => $paid_amount,
                         'created_at'       => $created_at,
@@ -366,7 +383,7 @@ class CIG_Migrator {
                         'is_rs_uploaded'   => $is_rs_uploaded,
                         'author_id'        => $author_id,
                     ],
-                    ['%s', '%s', '%s', '%f', '%f', '%s', '%s', '%s', '%d', '%d']
+                    ['%s', '%s', '%s', '%d', '%f', '%f', '%s', '%s', '%s', '%d', '%d']
                 );
                 $new_invoice_id = $wpdb->insert_id;
             }
@@ -604,6 +621,21 @@ class CIG_Migrator {
             $created_at = $post->post_date;
             $updated_at = $post->post_modified;
 
+            // Retrieve full buyer metadata and sync customer to get customer_id
+            $buyer_data = [
+                'name'    => $buyer_name,
+                'tax_id'  => $buyer_tax_id,
+                'address' => get_post_meta($invoice_id, '_cig_buyer_address', true),
+                'phone'   => get_post_meta($invoice_id, '_cig_buyer_phone', true),
+                'email'   => get_post_meta($invoice_id, '_cig_buyer_email', true),
+            ];
+
+            $customer_id = 0;
+            if (class_exists('CIG_Customers')) {
+                $cust = new CIG_Customers();
+                $customer_id = $cust->sync_customer($buyer_data);
+            }
+
             // Check if already migrated
             $table_invoices = $wpdb->prefix . 'cig_invoices';
             $exists = $wpdb->get_var($wpdb->prepare(
@@ -620,13 +652,16 @@ class CIG_Migrator {
                         'type' => $invoice_status,
                         'customer_name' => $buyer_name,
                         'customer_tax_id' => $buyer_tax_id,
+                        'customer_id' => intval($customer_id),
                         'total' => $total,
                         'paid' => $paid,
                         'balance' => $balance,
                         'updated_at' => $updated_at,
                         'activation_date' => ($invoice_status === 'standard') ? $created_at : null
                     ],
-                    ['id' => $invoice_id]
+                    ['id' => $invoice_id],
+                    ['%s', '%s', '%s', '%s', '%d', '%f', '%f', '%f', '%s', '%s'],
+                    ['%d']
                 );
             } else {
                 // Insert new record
@@ -638,13 +673,15 @@ class CIG_Migrator {
                         'type' => $invoice_status,
                         'customer_name' => $buyer_name,
                         'customer_tax_id' => $buyer_tax_id,
+                        'customer_id' => intval($customer_id),
                         'total' => $total,
                         'paid' => $paid,
                         'balance' => $balance,
                         'created_at' => $created_at,
                         'updated_at' => $updated_at,
                         'activation_date' => ($invoice_status === 'standard') ? $created_at : null
-                    ]
+                    ],
+                    ['%d', '%s', '%s', '%s', '%s', '%d', '%f', '%f', '%f', '%s', '%s', '%s']
                 );
             }
 
