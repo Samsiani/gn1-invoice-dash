@@ -569,7 +569,8 @@ class CIG_Ajax_Products {
                 }
             }
             
-            $specs = wp_strip_all_tags($description);
+            // Strip all HTML tags and shortcodes from the description
+            $specs = wp_strip_all_tags(strip_shortcodes($description));
         }
         
         return $specs;
@@ -588,6 +589,11 @@ class CIG_Ajax_Products {
     private function process_attribute_for_specs($attribute, $product, $exclude_attributes, &$spec_lines, &$processed_attrs) {
         // Handle both WC_Product_Attribute objects and array format
         if (!is_a($attribute, 'WC_Product_Attribute')) {
+            return;
+        }
+        
+        // VISIBILITY CHECK: Only process visible attributes
+        if (!$attribute->get_visible()) {
             return;
         }
         

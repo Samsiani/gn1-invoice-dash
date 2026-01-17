@@ -26,6 +26,42 @@ jQuery(function ($) {
   
   var paymentHistory = [];
 
+  // --- TEMPLATE ROW: Clean HTML template for new product rows ---
+  // Used instead of cloning last row to prevent corruption from loading rows
+  function getCleanRowTemplate(rowNum) {
+    return '<tr class="cig-item-row">' +
+      '<td class="col-n">' + rowNum + '</td>' +
+      '<td class="col-name">' +
+        '<input type="text" class="product-search" data-product-id="0" data-sku="" value="">' +
+        '<div class="name-sub"><span class="name-sku-label">Code:</span> <span class="name-sku-value">—</span></div>' +
+      '</td>' +
+      '<td class="col-image">' +
+        '<img class="product-image cig-placeholder-img" src="' + cigAjax.placeholder_img + '">' +
+        '<select class="warranty-period" style="width:100%;margin-top:5px;font-size:10px;"><option value="">---</option><option value="6m">6 Months</option><option value="1y">1 Year</option><option value="2y">2 Years</option><option value="3y">3 Years</option></select>' +
+      '</td>' +
+      '<td class="col-brand"><input type="text" class="product-brand" readonly value=""></td>' +
+      '<td class="col-desc"><textarea class="product-desc"></textarea></td>' +
+      '<td class="col-qty">' +
+        '<div class="quantity-wrapper">' +
+          '<input type="number" class="quantity" min="1" value="1">' +
+          '<div class="qty-btn-group"><button type="button" class="qty-btn qty-increase">▲</button><button type="button" class="qty-btn qty-decrease">▼</button></div>' +
+        '</div>' +
+      '</td>' +
+      '<td class="col-price"><input type="number" class="price" step="0.01" value="0.00"></td>' +
+      '<td class="col-total"><input type="text" class="row-total" readonly value="0.00"></td>' +
+      '<td class="col-status no-print">' +
+        '<select class="product-status">' +
+          '<option value="none">---</option>' +
+          '<option value="sold">Sold</option>' +
+          '<option value="reserved">Reserved</option>' +
+          '<option value="canceled">Canceled</option>' +
+        '</select>' +
+        '<input type="number" class="reservation-days" min="1" max="90" value="' + defaultReservationDays + '" style="width:60px;margin-top:3px;display:none;">' +
+      '</td>' +
+      '<td class="col-actions no-print"><button type="button" class="btn-remove-row">X</button></td>' +
+    '</tr>';
+  }
+
   // --- INITIALIZATION ---
   $(document).ready(function() {
       if (isReadOnly) {
@@ -95,9 +131,10 @@ jQuery(function ($) {
 
       var $tbody = $('#invoice-items');
       
-      // REPLACEMENT MODE: Clear existing rows and show loading indicator
+      // REPLACEMENT MODE: Completely clear existing rows (including any loading rows) 
+      // and show loading indicator
       $tbody.empty();
-      $tbody.html('<tr class="cig-loading-row"><td colspan="10" style="text-align:center;padding:20px;color:#666;">' +
+      $tbody.append('<tr class="cig-loading-row"><td colspan="10" style="text-align:center;padding:20px;color:#666;">' +
           '<span class="dashicons dashicons-update" style="animation: cig-spin 1s linear infinite;"></span> ' +
           (cigAjax.i18n?.loading || 'Loading fresh product data...') +
           '</td></tr>');
@@ -202,6 +239,19 @@ jQuery(function ($) {
   function renderFreshItems(items) {
       var $tbody = $('#invoice-items');
       
+      // CRITICAL: Completely clear the tbody including any loading rows
+      // before rendering fresh items
+      $tbody.empty();
+      
+      // If no items to render, add at least one empty clean row
+      if (!items || items.length === 0) {
+          var $emptyRow = $(getCleanRowTemplate(1));
+          $tbody.append($emptyRow);
+          initAutocomplete($emptyRow.find('.product-search'));
+          updateGrandTotal();
+          return;
+      }
+      
       items.forEach(function(item, idx) {
           var rowNum = idx + 1;
           var price = parseFloat(item.price || 0).toFixed(2);
@@ -209,6 +259,7 @@ jQuery(function ($) {
           var total = (price * qty).toFixed(2);
           var img = item.image || cigAjax.placeholder_img;
           
+          // HARDENED: Always use cig-item-row class, never cig-loading-row
           var html = '<tr class="cig-item-row">' +
               '<td class="col-n">' + rowNum + '</td>' +
               '<td class="col-name">' +
@@ -469,18 +520,15 @@ jQuery(function ($) {
   $(document).on('click', '#btn-add-row', function () {
     if (isReadOnly) return;
     var $tbody = $('#invoice-items');
-    var $new = $tbody.find('tr:last').clone();
-    $new.find('input, textarea').val(''); $new.find('.product-search').attr('data-product-id', '0').attr('data-sku', '').removeAttr('title');
-    $new.find('.name-sku-value').text('—'); $new.find('.product-image').attr('src', cigAjax.placeholder_img).addClass('cig-placeholder-img');
-    $new.find('.warranty-period').val(''); $new.find('.quantity').val('1').removeClass('stock-error'); $new.find('.price').val('0.00');
-    $new.find('.row-total').val('0.00'); 
     
-    // Default to 'none' on new row
-    $new.find('.product-status').val('none'); 
+    // FIX: Use template row instead of cloning last row to prevent corruption
+    // when loading row is present or AJAX fails
+    var rowNum = $tbody.find('tr.cig-item-row').length + 1;
+    var $new = $(getCleanRowTemplate(rowNum));
     
-    $new.find('.reservation-days').val(defaultReservationDays).hide(); $new.find('.stock-warning').remove(); $new.find('.btn-remove-row').show();
-    $new.find('.col-n').text($tbody.find('tr').length + 1);
-    $tbody.append($new); initAutocomplete($new.find('.product-search')); updateGrandTotal();
+    $tbody.append($new); 
+    initAutocomplete($new.find('.product-search')); 
+    updateGrandTotal();
   });
 
   $(document).on('click', '.btn-remove-row', function () {
@@ -667,9 +715,10 @@ jQuery(function ($) {
     $.post(cigAjax.ajax_url, { action: action, nonce: cigAjax.nonce, payload: JSON.stringify(payload) }, function(res) {
         if (res.success) {
             // CRITICAL: Clear the selection list on successful save (regardless of invoice status)
-            // Clear CIGSelection manager (handles both localStorage and server sync)
+            // POST-SAVE BASKET RESET: Only clear after database returns 200 OK
+            // Clear CIGSelection manager with force flag (handles both localStorage and server sync)
             if (typeof window.CIGSelection !== 'undefined') {
-                window.CIGSelection.clear();
+                window.CIGSelection.clear(true);
             }
             // Also explicitly clear localStorage key as a fallback
             try {
