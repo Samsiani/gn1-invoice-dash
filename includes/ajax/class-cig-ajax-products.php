@@ -24,8 +24,9 @@ class CIG_Ajax_Products {
         // Selection Sync Hook
         add_action('wp_ajax_cig_sync_selection', [$this, 'sync_selection']);
         
-        // Fresh Product Data Hook (for Anti-Caching)
+        // Fresh Product Data Hooks (for Anti-Caching)
         add_action('wp_ajax_cig_get_fresh_product_data', [$this, 'get_fresh_product_data']);
+        add_action('wp_ajax_cig_get_fresh_product_data_batch', [$this, 'get_fresh_product_data_batch']);
     }
 
     public function search_products() {
@@ -416,103 +417,72 @@ class CIG_Ajax_Products {
     }
 
     /**
+     * Get fresh product data for multiple products in batch (Anti-Caching)
+     * Used when loading multiple products from picker into the invoice editor
+     * Reduces network overhead compared to individual requests
+     */
+    public function get_fresh_product_data_batch() {
+        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'manage_woocommerce');
+        
+        if (!class_exists('WC_Product')) {
+            wp_send_json_error(['message' => 'WooCommerce not active']);
+        }
+        
+        $raw_ids = isset($_POST['product_ids']) ? wp_unslash($_POST['product_ids']) : '[]';
+        $product_ids = json_decode($raw_ids, true);
+        
+        if (!is_array($product_ids) || empty($product_ids)) {
+            wp_send_json_error(['message' => 'Invalid product IDs']);
+        }
+        
+        // Limit batch size to prevent abuse
+        $product_ids = array_slice($product_ids, 0, 50);
+        
+        $products = [];
+        
+        foreach ($product_ids as $product_id) {
+            $product_id = intval($product_id);
+            if ($product_id > 0) {
+                $payload = $this->build_fresh_product_payload($product_id);
+                if ($payload) {
+                    $products[$product_id] = $payload;
+                }
+            }
+        }
+        
+        wp_send_json_success(['products' => $products]);
+    }
+
+    /**
      * Build fresh product payload with Attribute-First specs logic
-     * This method ensures we get the most up-to-date data from WooCommerce
+     * This method reuses build_product_payload to avoid code duplication
+     * and transforms the output to the expected format for fresh data requests
      * 
      * @param int $product_id Product ID
      * @return array|null Product data array or null if product not found
      */
     private function build_fresh_product_payload($product_id) {
-        try {
-            // Get fresh WooCommerce product object (bypasses any caching)
-            $product = wc_get_product($product_id);
-            if (!$product) {
-                return null;
-            }
-
-            $settings = get_option('cig_settings', []);
-            $brand_attribute = $settings['brand_attribute'] ?? 'pa_prod-brand';
-            $exclude_attributes = $settings['exclude_spec_attributes'] ?? ['pa_prod-brand', 'pa_product-condition'];
-
-            // --- BRAND LOGIC ---
-            $brand = '';
-            if ($brand_attribute) {
-                $brand_val = $product->get_attribute($brand_attribute);
-                if ($brand_val) {
-                    $brand = $brand_val;
-                } else {
-                    // Fallback to parent product terms
-                    $parent_id = $product->get_parent_id() ?: $product_id;
-                    $terms = wp_get_post_terms($parent_id, $brand_attribute, ['fields' => 'names']);
-                    if (!is_wp_error($terms) && !empty($terms)) {
-                        $brand = $terms[0];
-                    }
-                }
-            }
-
-            // --- SMART SPECS LOGIC: Attribute-First Rule ---
-            $specs = $this->get_product_specs_attribute_first($product, (array) $exclude_attributes);
-
-            // --- TITLE FORMATTING ---
-            $product_name = $product->get_name();
-
-            if ($product->is_type('variation')) {
-                $parent = wc_get_product($product->get_parent_id());
-                $parent_name = $parent ? $parent->get_name() : $product_name;
-
-                $variation_attrs = [];
-                foreach ($product->get_variation_attributes() as $attr_key => $attr_val) {
-                    if ($attr_val) {
-                        $taxonomy = str_replace('attribute_', '', $attr_key);
-                        $term_name = urldecode($attr_val);
-
-                        if (taxonomy_exists($taxonomy)) {
-                            $term = get_term_by('slug', $attr_val, $taxonomy);
-                            if ($term && !is_wp_error($term)) {
-                                $term_name = $term->name;
-                            }
-                        }
-                        $variation_attrs[] = ucfirst($term_name);
-                    }
-                }
-
-                if (!empty($variation_attrs)) {
-                    $product_name = $parent_name . ' - ' . implode(', ', $variation_attrs);
-                } else {
-                    $product_name = $parent_name;
-                }
-            }
-
-            // --- STOCK DATA ---
-            $stock_qty = $product->get_stock_quantity();
-            $reserved = $this->stock ? $this->stock->get_reserved($product_id) : 0;
-            $available = ($stock_qty !== null && $stock_qty !== '') ? max(0, $stock_qty - $reserved) : null;
-
-            // --- IMAGE ---
-            $image_url = '';
-            $image_id = $product->get_image_id();
-            if ($image_id) {
-                $image_src = wp_get_attachment_image_src($image_id, 'medium');
-                if ($image_src) {
-                    $image_url = $image_src[0];
-                }
-            }
-
-            return [
-                'id'        => $product_id,
-                'name'      => $product_name,
-                'sku'       => $product->get_sku() ?: '',
-                'brand'     => $brand,
-                'desc'      => $specs,
-                'price'     => floatval($product->get_price() ?: 0),
-                'image'     => $image_url,
-                'stock'     => $stock_qty,
-                'reserved'  => $reserved,
-                'available' => $available
-            ];
-        } catch (Exception $e) {
+        // Reuse the existing build_product_payload method
+        $payload = $this->build_product_payload($product_id);
+        
+        if (!$payload) {
             return null;
         }
+        
+        // Transform to the expected output format for fresh data requests
+        // The build_product_payload returns 'value' for name, we need 'name'
+        return [
+            'id'        => $payload['id'],
+            'name'      => $payload['value'],  // 'value' contains the formatted name
+            'sku'       => $payload['sku'] ?: '',
+            'brand'     => $payload['brand'],
+            'desc'      => $payload['desc'],
+            'price'     => $payload['price'],
+            'image'     => $payload['image'],
+            'stock'     => $payload['stock'],
+            'reserved'  => $payload['reserved'],
+            'available' => $payload['available']
+        ];
     }
 
     /**
