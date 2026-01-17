@@ -51,7 +51,7 @@ jQuery(function ($) {
   }
 
   // ---------------------------------------------------------
-  // CART LOADING LOGIC (UPDATED: DB BASED)
+  // CART LOADING LOGIC (UPDATED: DB BASED WITH FRESH DATA INJECTION)
   // ---------------------------------------------------------
   function loadFromCart() {
       // Get cart data passed from PHP (User Meta)
@@ -59,16 +59,102 @@ jQuery(function ($) {
 
       if (!Array.isArray(cart) || cart.length === 0) return;
 
-      var $firstRow = $('#invoice-items tr').first();
-      // Only remove empty first row if it's truly empty
-      if ($firstRow.find('.product-search').val() === '') {
-          $firstRow.remove();
-      }
-
       var $tbody = $('#invoice-items');
+      
+      // FRESH DATA INJECTION: Clear ALL existing rows to ensure no stale/cached data
+      $tbody.empty();
 
-      cart.forEach(function(item) {
-          var rowNum = $tbody.children().length + 1;
+      // Track pending fresh data fetches
+      var pendingFetches = cart.length;
+      var fetchedItems = [];
+
+      // Fetch fresh product data for each item
+      cart.forEach(function(item, index) {
+          var productId = parseInt(item.id, 10);
+          var originalQty = parseFloat(item.qty || 1);
+          
+          if (!productId) {
+              pendingFetches--;
+              if (pendingFetches === 0) {
+                  renderFreshItems(fetchedItems);
+              }
+              return;
+          }
+
+          // Fetch fresh product data from server
+          $.ajax({
+              url: cigAjax.ajax_url,
+              method: 'POST',
+              dataType: 'json',
+              data: {
+                  action: 'cig_get_fresh_product_data',
+                  nonce: cigAjax.nonce,
+                  product_id: productId
+              },
+              success: function(res) {
+                  if (res && res.success && res.data) {
+                      // Use fresh data from server
+                      fetchedItems.push({
+                          index: index,
+                          id: productId,
+                          sku: res.data.sku || item.sku || '',
+                          name: res.data.name || item.name || '',
+                          price: parseFloat(res.data.price) || parseFloat(item.price) || 0,
+                          image: res.data.image || item.image || '',
+                          brand: res.data.brand || item.brand || '',
+                          desc: res.data.desc || item.desc || '',
+                          qty: originalQty
+                      });
+                  } else {
+                      // Fallback to cached data if fresh fetch fails
+                      fetchedItems.push({
+                          index: index,
+                          id: productId,
+                          sku: item.sku || '',
+                          name: item.name || '',
+                          price: parseFloat(item.price) || 0,
+                          image: item.image || '',
+                          brand: item.brand || '',
+                          desc: item.desc || '',
+                          qty: originalQty
+                      });
+                  }
+              },
+              error: function() {
+                  // Fallback to cached data on error
+                  fetchedItems.push({
+                      index: index,
+                      id: productId,
+                      sku: item.sku || '',
+                      name: item.name || '',
+                      price: parseFloat(item.price) || 0,
+                      image: item.image || '',
+                      brand: item.brand || '',
+                      desc: item.desc || '',
+                      qty: originalQty
+                  });
+              },
+              complete: function() {
+                  pendingFetches--;
+                  if (pendingFetches === 0) {
+                      // Sort by original index to maintain order
+                      fetchedItems.sort(function(a, b) { return a.index - b.index; });
+                      renderFreshItems(fetchedItems);
+                  }
+              }
+          });
+      });
+  }
+
+  /**
+   * Render items after fresh data has been fetched
+   * @param {Array} items - Array of fresh product data
+   */
+  function renderFreshItems(items) {
+      var $tbody = $('#invoice-items');
+      
+      items.forEach(function(item, idx) {
+          var rowNum = idx + 1;
           var price = parseFloat(item.price || 0).toFixed(2);
           var qty = parseFloat(item.qty || 1);
           var total = (price * qty).toFixed(2);
@@ -117,7 +203,7 @@ jQuery(function ($) {
 
       updateGrandTotal();
 
-      // Clear DB Cart after loading
+      // Clear DB Cart after loading (do not clear localStorage here - that's for save success)
       $.post(cigAjax.ajax_url, {
           action: 'cig_clear_cart_db',
           nonce: cigAjax.nonce
@@ -533,13 +619,21 @@ jQuery(function ($) {
 
     $.post(cigAjax.ajax_url, { action: action, nonce: cigAjax.nonce, payload: JSON.stringify(payload) }, function(res) {
         if (res.success) {
-            // CRITICAL: Clear the selection list on successful save
+            // CRITICAL: Clear the selection list on successful save (regardless of invoice status)
+            // Clear CIGSelection manager (handles both localStorage and server sync)
             if (typeof window.CIGSelection !== 'undefined') {
                 window.CIGSelection.clear();
+            }
+            // Also explicitly clear localStorage key as a fallback
+            try {
+                localStorage.removeItem('cig_selection');
+            } catch (e) {
+                // localStorage not available
             }
             alert(editMode ? 'Updated successfully.' : 'Saved successfully.');
             window.location.href = res.data.view_url;
         } else {
+            // DO NOT clear basket on error - only clear on success
             alert('Error: ' + (res.data.message || 'Save failed'));
             $btn.prop('disabled', false).text(editMode ? 'Update Invoice' : 'Save Invoice');
         }

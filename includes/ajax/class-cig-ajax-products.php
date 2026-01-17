@@ -23,6 +23,9 @@ class CIG_Ajax_Products {
         
         // Selection Sync Hook
         add_action('wp_ajax_cig_sync_selection', [$this, 'sync_selection']);
+        
+        // Fresh Product Data Hook (for Anti-Caching)
+        add_action('wp_ajax_cig_get_fresh_product_data', [$this, 'get_fresh_product_data']);
     }
 
     public function search_products() {
@@ -65,6 +68,7 @@ class CIG_Ajax_Products {
 
     /**
      * Helper to build product data payload
+     * Uses Attribute-First specs logic
      */
     private function build_product_payload($pid) {
         try {
@@ -84,30 +88,8 @@ class CIG_Ajax_Products {
                 }
             }
 
-            // --- DESCRIPTION LOGIC ---
-            $lines = [];
-            $attributes = $p->get_attributes();
-            
-            if (!empty($attributes)) {
-                foreach ($attributes as $attr) {
-                    if (!is_a($attr, 'WC_Product_Attribute')) continue;
-                    $name = $attr->get_name();
-                    $tax_slug = taxonomy_exists($name) ? $name : sanitize_title($name);
-                    if (in_array($tax_slug, (array)$excludes, true)) continue;
-                    $label = wc_attribute_label($name);
-                    $value = $p->get_attribute($name);
-                    if (!empty($value)) {
-                        $lines[] = '• ' . $label . ': ' . $value;
-                    }
-                }
-            }
-
-            if (!empty($lines)) {
-                $desc = implode("\n", $lines);
-            } else {
-                $post_obj = get_post($p->get_parent_id() ?: $pid);
-                $desc = $post_obj ? wp_strip_all_tags($post_obj->post_content) : '';
-            }
+            // --- SMART SPECS LOGIC: Attribute-First Rule ---
+            $desc = $this->get_product_specs_attribute_first($p, (array) $excludes);
 
             // --- DIMENSIONS ---
             $dimensions = '';
@@ -403,5 +385,213 @@ class CIG_Ajax_Products {
             'selection' => $sanitized_selection, 
             'count' => count($sanitized_selection)
         ]);
+    }
+
+    /**
+     * Get fresh product data for a single product (Anti-Caching)
+     * Used when loading products from picker into the invoice editor
+     * Implements "Attribute-First" specs logic
+     */
+    public function get_fresh_product_data() {
+        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'manage_woocommerce');
+        
+        if (!class_exists('WC_Product')) {
+            wp_send_json_error(['message' => 'WooCommerce not active']);
+        }
+        
+        $product_id = isset($_POST['product_id']) ? intval($_POST['product_id']) : 0;
+        
+        if (!$product_id) {
+            wp_send_json_error(['message' => 'Invalid product ID']);
+        }
+        
+        // Get fresh product data using existing method
+        $payload = $this->build_fresh_product_payload($product_id);
+        
+        if ($payload) {
+            wp_send_json_success($payload);
+        } else {
+            wp_send_json_error(['message' => 'Product not found']);
+        }
+    }
+
+    /**
+     * Build fresh product payload with Attribute-First specs logic
+     * This method ensures we get the most up-to-date data from WooCommerce
+     * 
+     * @param int $product_id Product ID
+     * @return array|null Product data array or null if product not found
+     */
+    private function build_fresh_product_payload($product_id) {
+        try {
+            // Get fresh WooCommerce product object (bypasses any caching)
+            $product = wc_get_product($product_id);
+            if (!$product) {
+                return null;
+            }
+
+            $settings = get_option('cig_settings', []);
+            $brand_attribute = $settings['brand_attribute'] ?? 'pa_prod-brand';
+            $exclude_attributes = $settings['exclude_spec_attributes'] ?? ['pa_prod-brand', 'pa_product-condition'];
+
+            // --- BRAND LOGIC ---
+            $brand = '';
+            if ($brand_attribute) {
+                $brand_val = $product->get_attribute($brand_attribute);
+                if ($brand_val) {
+                    $brand = $brand_val;
+                } else {
+                    // Fallback to parent product terms
+                    $parent_id = $product->get_parent_id() ?: $product_id;
+                    $terms = wp_get_post_terms($parent_id, $brand_attribute, ['fields' => 'names']);
+                    if (!is_wp_error($terms) && !empty($terms)) {
+                        $brand = $terms[0];
+                    }
+                }
+            }
+
+            // --- SMART SPECS LOGIC: Attribute-First Rule ---
+            $specs = $this->get_product_specs_attribute_first($product, (array) $exclude_attributes);
+
+            // --- TITLE FORMATTING ---
+            $product_name = $product->get_name();
+
+            if ($product->is_type('variation')) {
+                $parent = wc_get_product($product->get_parent_id());
+                $parent_name = $parent ? $parent->get_name() : $product_name;
+
+                $variation_attrs = [];
+                foreach ($product->get_variation_attributes() as $attr_key => $attr_val) {
+                    if ($attr_val) {
+                        $taxonomy = str_replace('attribute_', '', $attr_key);
+                        $term_name = urldecode($attr_val);
+
+                        if (taxonomy_exists($taxonomy)) {
+                            $term = get_term_by('slug', $attr_val, $taxonomy);
+                            if ($term && !is_wp_error($term)) {
+                                $term_name = $term->name;
+                            }
+                        }
+                        $variation_attrs[] = ucfirst($term_name);
+                    }
+                }
+
+                if (!empty($variation_attrs)) {
+                    $product_name = $parent_name . ' - ' . implode(', ', $variation_attrs);
+                } else {
+                    $product_name = $parent_name;
+                }
+            }
+
+            // --- STOCK DATA ---
+            $stock_qty = $product->get_stock_quantity();
+            $reserved = $this->stock ? $this->stock->get_reserved($product_id) : 0;
+            $available = ($stock_qty !== null && $stock_qty !== '') ? max(0, $stock_qty - $reserved) : null;
+
+            // --- IMAGE ---
+            $image_url = '';
+            $image_id = $product->get_image_id();
+            if ($image_id) {
+                $image_src = wp_get_attachment_image_src($image_id, 'medium');
+                if ($image_src) {
+                    $image_url = $image_src[0];
+                }
+            }
+
+            return [
+                'id'        => $product_id,
+                'name'      => $product_name,
+                'sku'       => $product->get_sku() ?: '',
+                'brand'     => $brand,
+                'desc'      => $specs,
+                'price'     => floatval($product->get_price() ?: 0),
+                'image'     => $image_url,
+                'stock'     => $stock_qty,
+                'reserved'  => $reserved,
+                'available' => $available
+            ];
+        } catch (Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Get product specifications with Attribute-First logic
+     * 
+     * Priority:
+     * 1. Check for product attributes (both Global/taxonomy-based and Custom/text-based)
+     * 2. If attributes exist, format them as specs
+     * 3. If NO attributes exist, fallback to product description or short description
+     * 
+     * @param WC_Product $product WooCommerce product object
+     * @param array $exclude_attributes Attributes to exclude from specs
+     * @return string Formatted specifications string
+     */
+    private function get_product_specs_attribute_first($product, $exclude_attributes = []) {
+        $specs = '';
+        $spec_lines = [];
+        
+        // Get all product attributes
+        $attributes = $product->get_attributes();
+        
+        if (!empty($attributes)) {
+            foreach ($attributes as $attribute) {
+                // Handle both WC_Product_Attribute objects and array format
+                if (is_a($attribute, 'WC_Product_Attribute')) {
+                    $attr_name = $attribute->get_name();
+                    $is_taxonomy = $attribute->is_taxonomy();
+                    
+                    // Build the taxonomy slug for exclusion check
+                    $tax_slug = $is_taxonomy ? $attr_name : sanitize_title($attr_name);
+                    
+                    // Skip excluded attributes
+                    if (in_array($tax_slug, $exclude_attributes, true)) {
+                        continue;
+                    }
+                    
+                    // Get attribute label
+                    $attr_label = wc_attribute_label($attr_name, $product);
+                    
+                    // Get attribute value(s)
+                    if ($is_taxonomy) {
+                        // Global Attribute (taxonomy-based)
+                        $attr_value = $product->get_attribute($attr_name);
+                    } else {
+                        // Custom Attribute (text-based)
+                        $options = $attribute->get_options();
+                        $attr_value = is_array($options) ? implode(', ', $options) : '';
+                    }
+                    
+                    if (!empty($attr_value)) {
+                        $spec_lines[] = '• ' . $attr_label . ': ' . $attr_value;
+                    }
+                }
+            }
+        }
+        
+        // If we have attribute specs, use them
+        if (!empty($spec_lines)) {
+            $specs = implode("\n", $spec_lines);
+        } else {
+            // FALLBACK: No attributes exist, use product description
+            $description = $product->get_description();
+            
+            if (empty($description)) {
+                // Try short description
+                $description = $product->get_short_description();
+            }
+            
+            if (empty($description) && $product->get_parent_id()) {
+                // For variations, try parent product description
+                $parent_post = get_post($product->get_parent_id());
+                if ($parent_post) {
+                    $description = $parent_post->post_content;
+                }
+            }
+            
+            $specs = wp_strip_all_tags($description);
+        }
+        
+        return $specs;
     }
 }
