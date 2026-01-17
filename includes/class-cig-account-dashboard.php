@@ -61,12 +61,91 @@ class CIG_Account_Dashboard {
 
         // Enqueue custom styles
         add_action('wp_enqueue_scripts', [$this, 'enqueue_styles']);
+
+        // Handle redirects for custom menu items
+        add_action('template_redirect', [$this, 'handle_custom_menu_redirects']);
+    }
+
+    /**
+     * Handle redirects for custom menu items
+     *
+     * Redirects custom endpoints to their actual destination URLs.
+     *
+     * @return void
+     */
+    public function handle_custom_menu_redirects() {
+        if (!is_account_page()) {
+            return;
+        }
+
+        global $wp;
+        $current_endpoint = isset($wp->query_vars['pagename']) ? $wp->query_vars['pagename'] : '';
+
+        // Check if we're on a custom endpoint via the request URI
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash($_SERVER['REQUEST_URI'])) : '';
+
+        $redirect_map = $this->get_menu_redirect_urls();
+
+        foreach ($redirect_map as $endpoint => $url) {
+            if (strpos($request_uri, '/my-account/' . $endpoint) !== false) {
+                wp_safe_redirect($url);
+                exit;
+            }
+        }
+    }
+
+    /**
+     * Get the redirect URLs for custom menu items
+     *
+     * @return array Map of endpoint slugs to destination URLs
+     */
+    private function get_menu_redirect_urls() {
+        return [
+            'cig-invoices'       => $this->get_invoice_page_url(),
+            'cig-customers'      => admin_url('edit.php?post_type=cig_customer'),
+            'cig-stock-requests' => admin_url('admin.php?page=cig-stock-requests'),
+            'cig-accountant'     => $this->get_accountant_page_url(),
+            'cig-statistics'     => admin_url('admin.php?page=cig-statistics'),
+        ];
+    }
+
+    /**
+     * Get the invoice shortcode page URL
+     *
+     * Looks for a page with the /invoice-shortcode/ slug, falls back to create new invoice page.
+     *
+     * @return string URL to the invoice page
+     */
+    private function get_invoice_page_url() {
+        $page = get_page_by_path('invoice-shortcode');
+        if ($page) {
+            return get_permalink($page->ID);
+        }
+        // Fallback to admin new invoice page
+        return admin_url('post-new.php?post_type=invoice');
+    }
+
+    /**
+     * Get the accountant page URL
+     *
+     * Looks for a page with the /accountant/ slug, falls back to admin accountant page.
+     *
+     * @return string URL to the accountant page
+     */
+    private function get_accountant_page_url() {
+        $page = get_page_by_path('accountant');
+        if ($page) {
+            return get_permalink($page->ID);
+        }
+        // Fallback to admin page if exists
+        return admin_url('admin.php?page=cig-accountant');
     }
 
     /**
      * Customize the My Account menu items
      *
      * Removes all default links except "Logout" and adds custom plugin links.
+     * Custom menu items redirect to external URLs via handle_custom_menu_redirects().
      *
      * @param array $items Default menu items
      * @return array Modified menu items
@@ -80,8 +159,7 @@ class CIG_Account_Dashboard {
             'dashboard' => __('Dashboard', 'cig'),
         ];
 
-        // Add custom menu items with external links
-        // These will be handled by the redirect logic
+        // Add custom menu items - redirects are handled by handle_custom_menu_redirects()
         $new_items['cig-invoices']       = __('Invoices', 'cig');
         $new_items['cig-customers']      = __('Customers', 'cig');
         $new_items['cig-stock-requests'] = __('Stock Requests', 'cig');
@@ -102,12 +180,12 @@ class CIG_Account_Dashboard {
      * @return void
      */
     public function render_dashboard_cards() {
-        // Define the dashboard cards
+        // Define the dashboard cards using helper methods for URL validation
         $cards = [
             [
                 'title'    => __('Invoices', 'cig'),
                 'icon'     => 'dashicons-media-text',
-                'link'     => home_url('/invoice-shortcode/'),
+                'link'     => $this->get_invoice_page_url(),
                 'desc'     => __('Create and manage invoices', 'cig'),
             ],
             [
@@ -125,7 +203,7 @@ class CIG_Account_Dashboard {
             [
                 'title'    => __('Accountant', 'cig'),
                 'icon'     => 'dashicons-calculator',
-                'link'     => home_url('/accountant/'),
+                'link'     => $this->get_accountant_page_url(),
                 'desc'     => __('Accounting dashboard', 'cig'),
             ],
             [
