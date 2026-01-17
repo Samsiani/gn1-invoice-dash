@@ -16,6 +16,12 @@ if (!defined('ABSPATH')) {
  */
 class CIG_Invoice {
 
+    /**
+     * Regex pattern for matching invoice numbers (letters followed by digits)
+     * Allows zero or more letters for prefix (for flexibility with pure numeric formats)
+     */
+    const INVOICE_NUMBER_PATTERN = '/^([A-Za-z]*)([0-9]+)$/';
+
     /** @var CIG_Stock_Manager */
     private $stock;
 
@@ -220,9 +226,10 @@ class CIG_Invoice {
             $has_invoices = true;
         } elseif (!$has_invoices) {
             // Fallback: Check postmeta if no invoices in custom table
+            // Use a broader pattern that matches both formats with and without prefix
             $rows = $wpdb->get_col($wpdb->prepare(
                 "SELECT meta_value FROM {$wpdb->postmeta} pm INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id WHERE pm.meta_key = %s AND pm.meta_value REGEXP %s",
-                '_cig_invoice_number', '^[A-Za-z]+[0-9]+$'
+                '_cig_invoice_number', '^[A-Za-z]*[0-9]+$'
             ));
             if ($rows && count($rows) > 0) {
                 $has_invoices = true;
@@ -250,8 +257,9 @@ class CIG_Invoice {
             update_option('cig_last_invoice_seq', $next_seq - 1, false);
         }
         
-        // Determine number of digits for padding (based on starting number length)
-        $pad_length = max(8, strlen((string) $starting_seq));
+        // Use a consistent padding length of 8 digits (default) 
+        // This ensures consistent formatting regardless of the starting number
+        $pad_length = 8;
         
         return $starting_prefix . str_pad($next_seq, $pad_length, '0', STR_PAD_LEFT);
     }
@@ -267,8 +275,8 @@ class CIG_Invoice {
             return false;
         }
         
-        // Match prefix (letters) followed by numbers
-        if (preg_match('/^([A-Za-z]*)([0-9]+)$/', $invoice_number, $matches)) {
+        // Match prefix (letters) followed by numbers using class constant
+        if (preg_match(self::INVOICE_NUMBER_PATTERN, $invoice_number, $matches)) {
             return [
                 'prefix' => strtoupper($matches[1] ?: CIG_INVOICE_NUMBER_PREFIX),
                 'number' => intval($matches[2])
@@ -290,8 +298,8 @@ class CIG_Invoice {
      * Ensure unique invoice number
      */
     public static function ensure_unique_number($maybe, $skip_id = 0) {
-        // Validate format - allow letters followed by numbers
-        if (empty($maybe) || !preg_match('/^[A-Za-z]*[0-9]+$/', $maybe)) {
+        // Validate format using class constant pattern (without anchors for simple validation)
+        if (empty($maybe) || !preg_match(self::INVOICE_NUMBER_PATTERN, $maybe)) {
             $maybe = self::get_next_number();
         }
         $maybe = strtoupper($maybe);
@@ -304,8 +312,8 @@ class CIG_Invoice {
         }
         
         $prefix = $parsed['prefix'];
-        $pad_length = strlen((string) $parsed['number']);
-        $pad_length = max(8, $pad_length); // At least 8 digits
+        // Use consistent padding of 8 digits
+        $pad_length = 8;
         
         $tries = 0;
         while ($tries < 15) {
