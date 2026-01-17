@@ -462,7 +462,13 @@
                         }
                     });
                     if (attrValues.length > 0 && varTitle) {
-                        $btn.data('title', varTitle.split(' - ')[0] + ' - ' + attrValues.join(', '));
+                        // Safely extract base title - use entire title if separator not found
+                        var baseTitle = varTitle;
+                        var separatorIndex = varTitle.indexOf(' - ');
+                        if (separatorIndex > 0) {
+                            baseTitle = varTitle.substring(0, separatorIndex);
+                        }
+                        $btn.data('title', baseTitle + ' - ' + attrValues.join(', '));
                     }
                     
                     // Enable the button
@@ -494,10 +500,20 @@
                 
                 if ($btn.length) {
                     // Disable button and clear variation data
+                    // Use the original title if available, otherwise fallback to a generic message
+                    var selectVariationText = $btn.data('original-title') || 'Select variation';
+                    
+                    // Try to get from localization object
+                    if (typeof cigStockTable !== 'undefined' && cigStockTable.i18n && cigStockTable.i18n.select_variation) {
+                        selectVariationText = cigStockTable.i18n.select_variation;
+                    } else if (typeof cigAjax !== 'undefined' && cigAjax.i18n && cigAjax.i18n.select_variation) {
+                        selectVariationText = cigAjax.i18n.select_variation;
+                    }
+                    
                     $btn.prop('disabled', true)
                         .attr('disabled', 'disabled')
                         .css({'opacity': '0.5', 'cursor': 'not-allowed'})
-                        .attr('title', 'აირჩიეთ ვარიაცია')
+                        .attr('title', selectVariationText)
                         .data('id', '')
                         .removeClass('added')
                         .html('<span class="dashicons dashicons-plus"></span>');

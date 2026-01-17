@@ -398,6 +398,7 @@ class CIG_Core {
                     'search_placeholder' => __('Search by name or SKU...', 'cig'),
                     'request_success' => __('Request submitted successfully. Waiting for approval.', 'cig'),
                     'request_fail' => __('Failed to submit request.', 'cig'),
+                    'select_variation' => __('Select variation', 'cig'),
                 ]
             ]);
         }
