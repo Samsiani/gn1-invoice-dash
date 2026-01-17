@@ -412,6 +412,113 @@
                     self._dispatchUpdate();
                 }
             });
+            
+            // Listen for WooCommerce variation changes on single product pages
+            self._bindVariationEvents();
+        },
+        
+        /**
+         * Bind WooCommerce variation change events
+         * Updates the add button data when a variation is selected
+         */
+        _bindVariationEvents: function() {
+            var self = this;
+            
+            // When a variation is selected on the single product page
+            $(document).on('found_variation', 'form.variations_form', function(event, variation) {
+                var $form = $(this);
+                var $btn = $form.closest('.product').find('.cig-single-add-btn');
+                
+                // Fallback: try to find button after the add to cart button
+                if (!$btn.length) {
+                    $btn = $form.find('.cig-add-btn').first();
+                }
+                if (!$btn.length) {
+                    $btn = $('.cig-single-add-btn');
+                }
+                
+                if ($btn.length && variation) {
+                    // Update button with variation data
+                    $btn.data('id', variation.variation_id);
+                    $btn.data('sku', variation.sku || '');
+                    $btn.data('price', variation.display_price || 0);
+                    
+                    // Get variation image
+                    var image = '';
+                    if (variation.image && variation.image.thumb_src) {
+                        image = variation.image.thumb_src;
+                    }
+                    $btn.data('image', image);
+                    
+                    // Build variation name from attributes
+                    var varTitle = $btn.data('title') || '';
+                    var attrValues = [];
+                    $form.find('.variations select').each(function() {
+                        var val = $(this).val();
+                        if (val) {
+                            // Try to get the human-readable label
+                            var $option = $(this).find('option:selected');
+                            attrValues.push($option.text() || val);
+                        }
+                    });
+                    if (attrValues.length > 0 && varTitle) {
+                        // Safely extract base title - use entire title if separator not found
+                        var baseTitle = varTitle;
+                        var separatorIndex = varTitle.indexOf(' - ');
+                        if (separatorIndex > 0) {
+                            baseTitle = varTitle.substring(0, separatorIndex);
+                        }
+                        $btn.data('title', baseTitle + ' - ' + attrValues.join(', '));
+                    }
+                    
+                    // Enable the button
+                    $btn.prop('disabled', false)
+                        .removeAttr('disabled')
+                        .css({'opacity': '1', 'cursor': 'pointer'})
+                        .attr('title', '');
+                    
+                    // Update button state based on selection
+                    if (self.has(variation.variation_id)) {
+                        $btn.addClass('added').html('<span class="dashicons dashicons-yes"></span>');
+                    } else {
+                        $btn.removeClass('added').html('<span class="dashicons dashicons-plus"></span>');
+                    }
+                }
+            });
+            
+            // When variation is reset/cleared
+            $(document).on('reset_data', 'form.variations_form', function() {
+                var $form = $(this);
+                var $btn = $form.closest('.product').find('.cig-single-add-btn');
+                
+                if (!$btn.length) {
+                    $btn = $form.find('.cig-add-btn').first();
+                }
+                if (!$btn.length) {
+                    $btn = $('.cig-single-add-btn');
+                }
+                
+                if ($btn.length) {
+                    // Disable button and clear variation data
+                    // Use the original title if available, otherwise fallback to a generic message
+                    var selectVariationText = $btn.data('original-title') || 'Select variation';
+                    
+                    // Try to get from localization object
+                    if (typeof cigStockTable !== 'undefined' && cigStockTable.i18n && cigStockTable.i18n.select_variation) {
+                        selectVariationText = cigStockTable.i18n.select_variation;
+                    } else if (typeof cigAjax !== 'undefined' && cigAjax.i18n && cigAjax.i18n.select_variation) {
+                        selectVariationText = cigAjax.i18n.select_variation;
+                    }
+                    
+                    $btn.prop('disabled', true)
+                        .attr('disabled', 'disabled')
+                        .css({'opacity': '0.5', 'cursor': 'not-allowed'})
+                        .attr('title', selectVariationText)
+                        .data('id', '')
+                        .removeClass('added')
+                        .html('<span class="dashicons dashicons-plus"></span>');
+                }
+            });
         },
 
         /**
