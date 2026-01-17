@@ -51,24 +51,145 @@ jQuery(function ($) {
   }
 
   // ---------------------------------------------------------
-  // CART LOADING LOGIC (UPDATED: DB BASED)
+  // CART LOADING LOGIC (UPDATED: DB BASED WITH FRESH DATA INJECTION)
   // ---------------------------------------------------------
+  
+  /**
+   * Helper function to create fallback item data from cached/original item
+   * @param {Object} item - Original cart item
+   * @param {number} index - Item index
+   * @param {number} productId - Product ID
+   * @param {number} originalQty - Original quantity
+   * @returns {Object} Formatted item data
+   */
+  function createFallbackItemData(item, index, productId, originalQty) {
+      return {
+          index: index,
+          id: productId,
+          sku: item.sku || '',
+          name: item.name || '',
+          price: parseFloat(item.price) || 0,
+          image: item.image || '',
+          brand: item.brand || '',
+          desc: item.desc || '',
+          qty: originalQty
+      };
+  }
+
   function loadFromCart() {
       // Get cart data passed from PHP (User Meta)
       var cart = cigAjax.initialCart || [];
 
       if (!Array.isArray(cart) || cart.length === 0) return;
 
-      var $firstRow = $('#invoice-items tr').first();
-      // Only remove empty first row if it's truly empty
-      if ($firstRow.find('.product-search').val() === '') {
-          $firstRow.remove();
-      }
-
       var $tbody = $('#invoice-items');
+      
+      // FRESH DATA INJECTION: Clear existing rows and show loading indicator
+      $tbody.empty();
+      $tbody.html('<tr class="cig-loading-row"><td colspan="10" style="text-align:center;padding:20px;color:#666;">' +
+          '<span class="dashicons dashicons-update" style="animation: cig-spin 1s linear infinite;"></span> ' +
+          (cigAjax.i18n?.loading || 'Loading fresh product data...') +
+          '</td></tr>');
 
-      cart.forEach(function(item) {
-          var rowNum = $tbody.children().length + 1;
+      // Collect valid product IDs for batch request
+      var productIds = [];
+      var cartMap = {};
+      
+      cart.forEach(function(item, index) {
+          var productId = parseInt(item.id, 10);
+          if (productId) {
+              productIds.push(productId);
+              cartMap[productId] = {
+                  item: item,
+                  index: index,
+                  qty: parseFloat(item.qty || 1)
+              };
+          }
+      });
+
+      if (productIds.length === 0) return;
+
+      // Fetch fresh product data in batch from server
+      $.ajax({
+          url: cigAjax.ajax_url,
+          method: 'POST',
+          dataType: 'json',
+          data: {
+              action: 'cig_get_fresh_product_data_batch',
+              nonce: cigAjax.nonce,
+              product_ids: JSON.stringify(productIds)
+          },
+          success: function(res) {
+              var fetchedItems = [];
+              
+              if (res && res.success && res.data && res.data.products) {
+                  // Process batch response
+                  var freshProducts = res.data.products;
+                  
+                  cart.forEach(function(item, index) {
+                      var productId = parseInt(item.id, 10);
+                      var originalQty = parseFloat(item.qty || 1);
+                      
+                      if (!productId) return;
+                      
+                      var freshData = freshProducts[productId];
+                      
+                      if (freshData) {
+                          // Use fresh data from server
+                          fetchedItems.push({
+                              index: index,
+                              id: productId,
+                              sku: freshData.sku || item.sku || '',
+                              name: freshData.name || item.name || '',
+                              price: parseFloat(freshData.price) || parseFloat(item.price) || 0,
+                              image: freshData.image || item.image || '',
+                              brand: freshData.brand || item.brand || '',
+                              desc: freshData.desc || item.desc || '',
+                              qty: originalQty
+                          });
+                      } else {
+                          // Fallback to cached data
+                          fetchedItems.push(createFallbackItemData(item, index, productId, originalQty));
+                      }
+                  });
+              } else {
+                  // Fallback: use cached data for all items
+                  cart.forEach(function(item, index) {
+                      var productId = parseInt(item.id, 10);
+                      if (productId) {
+                          fetchedItems.push(createFallbackItemData(item, index, productId, parseFloat(item.qty || 1)));
+                      }
+                  });
+              }
+              
+              // Sort by original index and render
+              fetchedItems.sort(function(a, b) { return a.index - b.index; });
+              renderFreshItems(fetchedItems);
+          },
+          error: function() {
+              // Fallback: use cached data for all items on error
+              var fetchedItems = [];
+              cart.forEach(function(item, index) {
+                  var productId = parseInt(item.id, 10);
+                  if (productId) {
+                      fetchedItems.push(createFallbackItemData(item, index, productId, parseFloat(item.qty || 1)));
+                  }
+              });
+              fetchedItems.sort(function(a, b) { return a.index - b.index; });
+              renderFreshItems(fetchedItems);
+          }
+      });
+  }
+
+  /**
+   * Render items after fresh data has been fetched
+   * @param {Array} items - Array of fresh product data
+   */
+  function renderFreshItems(items) {
+      var $tbody = $('#invoice-items');
+      
+      items.forEach(function(item, idx) {
+          var rowNum = idx + 1;
           var price = parseFloat(item.price || 0).toFixed(2);
           var qty = parseFloat(item.qty || 1);
           var total = (price * qty).toFixed(2);
@@ -117,7 +238,7 @@ jQuery(function ($) {
 
       updateGrandTotal();
 
-      // Clear DB Cart after loading
+      // Clear DB Cart after loading (do not clear localStorage here - that's for save success)
       $.post(cigAjax.ajax_url, {
           action: 'cig_clear_cart_db',
           nonce: cigAjax.nonce
@@ -533,13 +654,21 @@ jQuery(function ($) {
 
     $.post(cigAjax.ajax_url, { action: action, nonce: cigAjax.nonce, payload: JSON.stringify(payload) }, function(res) {
         if (res.success) {
-            // CRITICAL: Clear the selection list on successful save
+            // CRITICAL: Clear the selection list on successful save (regardless of invoice status)
+            // Clear CIGSelection manager (handles both localStorage and server sync)
             if (typeof window.CIGSelection !== 'undefined') {
                 window.CIGSelection.clear();
+            }
+            // Also explicitly clear localStorage key as a fallback
+            try {
+                localStorage.removeItem('cig_selection');
+            } catch (e) {
+                // localStorage not available
             }
             alert(editMode ? 'Updated successfully.' : 'Saved successfully.');
             window.location.href = res.data.view_url;
         } else {
+            // DO NOT clear basket on error - only clear on success
             alert('Error: ' + (res.data.message || 'Save failed'));
             $btn.prop('disabled', false).text(editMode ? 'Update Invoice' : 'Save Invoice');
         }

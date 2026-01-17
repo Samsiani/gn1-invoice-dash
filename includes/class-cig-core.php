@@ -577,6 +577,7 @@ class CIG_Core {
 
     /**
      * Render Cart Bar on Single Product Page footer (NEW)
+     * Now also shows on invoice creation page for Universal Synchronization
      */
     public function render_single_product_cart_bar() {
         if (!current_user_can('manage_woocommerce')) return;
@@ -586,9 +587,20 @@ class CIG_Core {
         
         if (!$show && is_page()) {
             global $post;
+            // Show on stock table page
             if (has_shortcode($post->post_content, 'products_stock_table')) {
                 $show = true;
             }
+            // Show on invoice creation page (invoice-shortcode page)
+            if (has_shortcode($post->post_content, 'cig_invoice_generator') || 
+                has_shortcode($post->post_content, 'invoice_generator')) {
+                $show = true;
+            }
+        }
+        
+        // Also show on single invoice pages
+        if (!$show && is_singular('invoice')) {
+            $show = true;
         }
 
         if (!$show) return;
