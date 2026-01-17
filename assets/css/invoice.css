@@ -3,6 +3,27 @@
    Version: 3.9.0 (Vertical Middle Fix, Desc Size, Currency)
    ========================================================================== */
 
+/* Loading Animation for Fresh Data Fetch */
+@keyframes cig-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.cig-loading-row td {
+  text-align: center;
+  padding: 30px 20px;
+  color: #666;
+}
+
+.cig-loading-row .dashicons-update {
+  display: inline-block;
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
 .invoice-wrapper {
   font-family: 'FiraGO', sans-serif;
   width: 100%;

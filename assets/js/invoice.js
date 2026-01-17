@@ -77,14 +77,25 @@ jQuery(function ($) {
   }
 
   function loadFromCart() {
-      // Get cart data passed from PHP (User Meta)
-      var cart = cigAjax.initialCart || [];
+      // FRESH INJECTION LOGIC: 
+      // 1. First priority: Check CIGSelection (localStorage) for the freshest state
+      // 2. Fallback: Use server-provided initialCart from User Meta
+      
+      var cart = [];
+      
+      // Get from CIGSelection if available (most up-to-date)
+      if (typeof window.CIGSelection !== 'undefined' && window.CIGSelection.count() > 0) {
+          cart = window.CIGSelection.get();
+      } else {
+          // Fallback to server-provided cart
+          cart = cigAjax.initialCart || [];
+      }
 
       if (!Array.isArray(cart) || cart.length === 0) return;
 
       var $tbody = $('#invoice-items');
       
-      // FRESH DATA INJECTION: Clear existing rows and show loading indicator
+      // REPLACEMENT MODE: Clear existing rows and show loading indicator
       $tbody.empty();
       $tbody.html('<tr class="cig-loading-row"><td colspan="10" style="text-align:center;padding:20px;color:#666;">' +
           '<span class="dashicons dashicons-update" style="animation: cig-spin 1s linear infinite;"></span> ' +
@@ -109,15 +120,18 @@ jQuery(function ($) {
 
       if (productIds.length === 0) return;
 
-      // Fetch fresh product data in batch from server
+      // ANTI-CACHING STRATEGY: Fetch fresh product data in batch from server
+      // Uses POST method and cache:false to bypass any browser or plugin caching
       $.ajax({
           url: cigAjax.ajax_url,
           method: 'POST',
           dataType: 'json',
+          cache: false, // Prevent browser caching
           data: {
               action: 'cig_get_fresh_product_data_batch',
               nonce: cigAjax.nonce,
-              product_ids: JSON.stringify(productIds)
+              product_ids: JSON.stringify(productIds),
+              _nocache: Date.now() // Cache-busting timestamp
           },
           success: function(res) {
               var fetchedItems = [];
@@ -238,11 +252,9 @@ jQuery(function ($) {
 
       updateGrandTotal();
 
-      // Clear DB Cart after loading (do not clear localStorage here - that's for save success)
-      $.post(cigAjax.ajax_url, {
-          action: 'cig_clear_cart_db',
-          nonce: cigAjax.nonce
-      });
+      // PERSISTENCE: Do NOT clear the basket when loading into invoice editor
+      // The basket remains populated so the consultant can return to browsing and add more items
+      // Clearing will only happen upon successful invoice save (cig_save_invoice AJAX success)
   }
 
   // ---------------------------------------------------------

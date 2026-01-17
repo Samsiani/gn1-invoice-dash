@@ -420,6 +420,8 @@ class CIG_Ajax_Products {
      * Get fresh product data for multiple products in batch (Anti-Caching)
      * Used when loading multiple products from picker into the invoice editor
      * Reduces network overhead compared to individual requests
+     * 
+     * ANTI-CACHING: Clears WooCommerce product cache to ensure fresh database read
      */
     public function get_fresh_product_data_batch() {
         $this->security->verify_ajax_request('cig_nonce', 'nonce', 'manage_woocommerce');
@@ -443,6 +445,11 @@ class CIG_Ajax_Products {
         foreach ($product_ids as $product_id) {
             $product_id = intval($product_id);
             if ($product_id > 0) {
+                // ANTI-CACHING: Clear WooCommerce product cache for this ID
+                // This ensures we get the absolute latest data from the database
+                clean_post_cache($product_id);
+                wc_delete_product_transients($product_id);
+                
                 $payload = $this->build_fresh_product_payload($product_id);
                 if ($payload) {
                     $products[$product_id] = $payload;
@@ -491,7 +498,8 @@ class CIG_Ajax_Products {
      * Priority:
      * 1. Check for product attributes (both Global/taxonomy-based and Custom/text-based)
      * 2. If attributes exist, format them as specs
-     * 3. If NO attributes exist, fallback to product description or short description
+     * 3. For Variations: Check parent product's attributes if variation-specific attributes are not exhaustive
+     * 4. If NO attributes exist, fallback to product description or short description
      * 
      * @param WC_Product $product WooCommerce product object
      * @param array $exclude_attributes Attributes to exclude from specs
@@ -500,45 +508,37 @@ class CIG_Ajax_Products {
     private function get_product_specs_attribute_first($product, $exclude_attributes = []) {
         $specs = '';
         $spec_lines = [];
+        $processed_attrs = []; // Track which attributes we've processed
         
         // Get all product attributes
         $attributes = $product->get_attributes();
         
+        // Process product's own attributes
         if (!empty($attributes)) {
             foreach ($attributes as $attribute) {
-                // Handle both WC_Product_Attribute objects and array format
-                if (is_a($attribute, 'WC_Product_Attribute')) {
-                    $attr_name = $attribute->get_name();
-                    $is_taxonomy = $attribute->is_taxonomy();
-                    
-                    // Build the taxonomy slug for exclusion check
-                    $tax_slug = $is_taxonomy ? $attr_name : sanitize_title($attr_name);
-                    
-                    // Skip excluded attributes
-                    if (in_array($tax_slug, $exclude_attributes, true)) {
-                        continue;
-                    }
-                    
-                    // Get attribute label
-                    $attr_label = wc_attribute_label($attr_name, $product);
-                    
-                    // Get attribute value(s)
-                    if ($is_taxonomy) {
-                        // Global Attribute (taxonomy-based)
-                        $attr_value = $product->get_attribute($attr_name);
-                    } else {
-                        // Custom Attribute (text-based) - sanitize options to prevent XSS
-                        $options = $attribute->get_options();
-                        if (is_array($options)) {
-                            $sanitized_options = array_map('sanitize_text_field', $options);
-                            $attr_value = implode(', ', $sanitized_options);
-                        } else {
-                            $attr_value = '';
+                $this->process_attribute_for_specs($attribute, $product, $exclude_attributes, $spec_lines, $processed_attrs);
+            }
+        }
+        
+        // INHERITANCE: For variations, also check parent product's attributes
+        // This ensures we get full specs even if variation doesn't define all attributes
+        if ($product->is_type('variation') && $product->get_parent_id()) {
+            $parent_product = wc_get_product($product->get_parent_id());
+            
+            if ($parent_product) {
+                $parent_attributes = $parent_product->get_attributes();
+                
+                if (!empty($parent_attributes)) {
+                    foreach ($parent_attributes as $attribute) {
+                        // Only process if we haven't already processed this attribute from the variation
+                        $attr_name = '';
+                        if (is_a($attribute, 'WC_Product_Attribute')) {
+                            $attr_name = $attribute->get_name();
                         }
-                    }
-                    
-                    if (!empty($attr_value)) {
-                        $spec_lines[] = '• ' . esc_html($attr_label) . ': ' . esc_html($attr_value);
+                        
+                        if (!empty($attr_name) && !in_array($attr_name, $processed_attrs, true)) {
+                            $this->process_attribute_for_specs($attribute, $parent_product, $exclude_attributes, $spec_lines, $processed_attrs);
+                        }
                     }
                 }
             }
@@ -561,6 +561,11 @@ class CIG_Ajax_Products {
                 $parent_post = get_post($product->get_parent_id());
                 if ($parent_post) {
                     $description = $parent_post->post_content;
+                    
+                    // Also try parent short description if content is empty
+                    if (empty($description)) {
+                        $description = $parent_post->post_excerpt;
+                    }
                 }
             }
             
@@ -568,5 +573,60 @@ class CIG_Ajax_Products {
         }
         
         return $specs;
+    }
+    
+    /**
+     * Process a single attribute and add it to specs
+     * Helper method for get_product_specs_attribute_first
+     * 
+     * @param mixed $attribute WC_Product_Attribute object or array
+     * @param WC_Product $product Product object to get attribute values from
+     * @param array $exclude_attributes Attributes to exclude
+     * @param array &$spec_lines Reference to spec lines array
+     * @param array &$processed_attrs Reference to processed attributes tracker
+     */
+    private function process_attribute_for_specs($attribute, $product, $exclude_attributes, &$spec_lines, &$processed_attrs) {
+        // Handle both WC_Product_Attribute objects and array format
+        if (!is_a($attribute, 'WC_Product_Attribute')) {
+            return;
+        }
+        
+        $attr_name = $attribute->get_name();
+        $is_taxonomy = $attribute->is_taxonomy();
+        
+        // Build the taxonomy slug for exclusion check
+        $tax_slug = $is_taxonomy ? $attr_name : sanitize_title($attr_name);
+        
+        // Skip excluded attributes
+        if (in_array($tax_slug, $exclude_attributes, true)) {
+            return;
+        }
+        
+        // Skip if already processed
+        if (in_array($attr_name, $processed_attrs, true)) {
+            return;
+        }
+        
+        // Get attribute label
+        $attr_label = wc_attribute_label($attr_name, $product);
+        
+        // Get attribute value(s)
+        $attr_value = '';
+        if ($is_taxonomy) {
+            // Global Attribute (taxonomy-based)
+            $attr_value = $product->get_attribute($attr_name);
+        } else {
+            // Custom Attribute (text-based) - sanitize options to prevent XSS
+            $options = $attribute->get_options();
+            if (is_array($options)) {
+                $sanitized_options = array_map('sanitize_text_field', $options);
+                $attr_value = implode(', ', $sanitized_options);
+            }
+        }
+        
+        if (!empty($attr_value)) {
+            $spec_lines[] = '• ' . esc_html($attr_label) . ': ' . esc_html($attr_value);
+            $processed_attrs[] = $attr_name;
+        }
     }
 }
