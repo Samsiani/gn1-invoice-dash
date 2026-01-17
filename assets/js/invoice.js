@@ -550,7 +550,7 @@ jQuery(function ($) {
 
     var items = [];
     $('#invoice-items tr').each(function () {
-      var $r = $(this); var name = $r.find('.product-search').val().trim(); if (!name) return;
+      var $r = $(this); var searchVal = $r.find('.product-search').val(); var name = (searchVal || '').trim(); if (!name) return;
       
       var currentStatus = $r.find('.product-status').val();
       
