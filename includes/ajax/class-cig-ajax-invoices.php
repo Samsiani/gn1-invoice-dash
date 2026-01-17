@@ -409,31 +409,27 @@ class CIG_Ajax_Invoices {
         
         // Handle sold_date - use provided value or null
         $sold_date = !empty($data['sold_date']) ? sanitize_text_field($data['sold_date']) : null;
-        
-        // Calculate balance
-        $total = floatval($data['total_amount']);
-        $paid = floatval($data['paid_amount']);
-        $balance = $total - $paid;
 
         // Insert invoice record with explicit ID matching WordPress post ID
-        // Uses correct column names matching the database schema (type, total, paid, balance, activation_date)
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $wpdb->insert(
             $this->table_invoices,
             [
-                'id'              => $post_id,
-                'invoice_number'  => $data['invoice_number'],
-                'type'            => $data['status'],
-                'customer_name'   => '',
-                'customer_tax_id' => '',
-                'total'           => $total,
-                'paid'            => $paid,
-                'balance'         => $balance,
-                'created_at'      => $now,
-                'activation_date' => $sale_date,
-                'sold_date'       => $sold_date
+                'id'               => $post_id,
+                'invoice_number'   => $data['invoice_number'],
+                'customer_id'      => intval($data['customer_id']),
+                'status'           => $data['status'],
+                'lifecycle_status' => $data['lifecycle_status'],
+                'total_amount'     => floatval($data['total_amount']),
+                'paid_amount'      => floatval($data['paid_amount']),
+                'created_at'       => $now,
+                'sale_date'        => $sale_date,
+                'sold_date'        => $sold_date,
+                'author_id'        => intval($data['author_id']),
+                'general_note'     => $data['general_note'],
+                'is_rs_uploaded'   => 0
             ],
-            ['%d', '%s', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%s']
+            ['%d', '%s', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%s', '%d', '%s', '%d']
         );
 
         // Insert items
@@ -461,27 +457,21 @@ class CIG_Ajax_Invoices {
         }
 
         // Get existing invoice to check old status
-        // Uses correct column names matching the database schema (type, activation_date)
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $existing = $wpdb->get_row(
-            $wpdb->prepare("SELECT type, activation_date FROM {$this->table_invoices} WHERE id = %d", $post_id),
+            $wpdb->prepare("SELECT status, sale_date FROM {$this->table_invoices} WHERE id = %d", $post_id),
             ARRAY_A
         );
-        
-        // Calculate totals and balance
-        $total = floatval($data['total_amount']);
-        $paid = floatval($data['paid_amount']);
-        $balance = $total - $paid;
 
-        // Uses correct column names matching the database schema (type, total, paid, balance)
         $update_data = [
-            'invoice_number' => $data['invoice_number'],
-            'type'           => $status,
-            'total'          => $total,
-            'paid'           => $paid,
-            'balance'        => $balance
+            'invoice_number'   => $data['invoice_number'],
+            'customer_id'      => intval($data['customer_id']),
+            'status'           => $status,
+            'total_amount'     => floatval($data['total_amount']),
+            'paid_amount'      => floatval($data['paid_amount']),
+            'general_note'     => $data['general_note']
         ];
-        $update_format = ['%s', '%s', '%f', '%f', '%f'];
+        $update_format = ['%s', '%d', '%s', '%f', '%f', '%s'];
 
         // Handle sold_date field
         if (isset($data['sold_date'])) {
@@ -489,18 +479,18 @@ class CIG_Ajax_Invoices {
             $update_format[] = '%s';
         }
 
-        // Date Logic: If status is becoming 'standard', calculate activation_date
+        // Date Logic: If status is becoming 'standard', calculate sale_date
         // based on the latest payment date
         if ($status === 'standard') {
-            $old_status = $existing['type'] ?? 'fictive';
-            $old_activation_date = $existing['activation_date'] ?? null;
+            $old_status = $existing['status'] ?? 'fictive';
+            $old_sale_date = $existing['sale_date'] ?? null;
 
-            // Calculate new activation_date if:
-            // 1. Transitioning from fictive to standard (no activation_date yet)
+            // Calculate new sale_date if:
+            // 1. Transitioning from fictive to standard (no sale_date yet)
             // 2. Already standard but needs date update based on latest payment
-            if ($old_status === 'fictive' || empty($old_activation_date)) {
-                $activation_date = $this->calculate_sale_date($status, $payments);
-                $update_data['activation_date'] = $activation_date;
+            if ($old_status === 'fictive' || empty($old_sale_date)) {
+                $sale_date = $this->calculate_sale_date($status, $payments);
+                $update_data['sale_date'] = $sale_date;
                 $update_format[] = '%s';
             }
         }
@@ -564,19 +554,18 @@ class CIG_Ajax_Invoices {
                 [
                     'invoice_id'        => $invoice_id,
                     'product_id'        => intval($item['product_id'] ?? 0),
-                    'name'              => sanitize_text_field($item['name'] ?? ''),
+                    'product_name'      => sanitize_text_field($item['name'] ?? ''),
                     'sku'               => sanitize_text_field($item['sku'] ?? ''),
-                    'brand'             => sanitize_text_field($item['brand'] ?? ''),
                     'description'       => sanitize_textarea_field($item['desc'] ?? $item['description'] ?? ''),
-                    'image'             => $image,
-                    'qty'               => $qty,
+                    'quantity'          => $qty,
                     'price'             => $price,
                     'total'             => $total,
-                    'warranty'          => sanitize_text_field($item['warranty'] ?? ''),
+                    'item_status'       => sanitize_text_field($item['status'] ?? 'none'),
+                    'warranty_duration' => sanitize_text_field($item['warranty'] ?? ''),
                     'reservation_days'  => intval($item['reservation_days'] ?? 0),
-                    'status'            => sanitize_text_field($item['status'] ?? 'none')
+                    'image'             => $image
                 ],
-                ['%d', '%d', '%s', '%s', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%d', '%s']
+                ['%d', '%d', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%d', '%s']
             );
         }
     }
@@ -611,12 +600,12 @@ class CIG_Ajax_Invoices {
             $wpdb->insert(
                 $this->table_payments,
                 [
-                    'invoice_id'     => $invoice_id,
-                    'amount'         => $amount,
-                    'date'           => $payment_date,
-                    'payment_method' => sanitize_text_field($payment['method'] ?? 'other'),
-                    'user_id'        => intval($payment['user_id'] ?? get_current_user_id()),
-                    'comment'        => sanitize_text_field($payment['comment'] ?? '')
+                    'invoice_id' => $invoice_id,
+                    'amount'     => $amount,
+                    'date'       => $payment_date,
+                    'method'     => sanitize_text_field($payment['method'] ?? 'other'),
+                    'user_id'    => intval($payment['user_id'] ?? get_current_user_id()),
+                    'comment'    => sanitize_text_field($payment['comment'] ?? '')
                 ],
                 ['%d', '%f', '%s', '%s', '%d', '%s']
             );
@@ -733,18 +722,18 @@ class CIG_Ajax_Invoices {
         // 1. Update status in DB (postmeta)
         update_post_meta($id, '_cig_invoice_status', $nst);
         
-        // 2. Update custom tables - uses correct column names (type, activation_date)
+        // 2. Update custom tables
         global $wpdb;
         $table_invoices = $wpdb->prefix . 'cig_invoices';
         
-        $update_data = ['type' => $nst];
+        $update_data = ['status' => $nst];
         $update_format = ['%s'];
         
-        // If activating (fictive -> standard), set activation_date
+        // If activating (fictive -> standard), set sale_date
         if ($ost === 'fictive' && $nst === 'standard') {
             $history = get_post_meta($id, '_cig_payment_history', true) ?: [];
-            $activation_date = $this->calculate_sale_date($nst, $history);
-            $update_data['activation_date'] = $activation_date;
+            $sale_date = $this->calculate_sale_date($nst, $history);
+            $update_data['sale_date'] = $sale_date;
             $update_format[] = '%s';
         }
         
