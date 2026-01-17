@@ -533,6 +533,10 @@ jQuery(function ($) {
 
     $.post(cigAjax.ajax_url, { action: action, nonce: cigAjax.nonce, payload: JSON.stringify(payload) }, function(res) {
         if (res.success) {
+            // CRITICAL: Clear the selection list on successful save
+            if (typeof window.CIGSelection !== 'undefined') {
+                window.CIGSelection.clear();
+            }
             alert(editMode ? 'Updated successfully.' : 'Saved successfully.');
             window.location.href = res.data.view_url;
         } else {

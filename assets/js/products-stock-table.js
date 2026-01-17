@@ -4,14 +4,81 @@ jQuery(function($) {
     // Safety check
     if (typeof cigStockTable === 'undefined') return;
 
-    // --- 1. SERVER-SIDE CART LOGIC (Replaces LocalStorage) ---
+    // --- 1. SELECTION LOGIC (Delegated to CIGSelection when available) ---
+    
+    // Wait for CIGSelection to be available (handles script load order)
+    var useCIGSelection = false;
+    var initTimeout = null;
+    
+    function checkCIGSelection() {
+        if (typeof window.CIGSelection !== 'undefined') {
+            useCIGSelection = true;
+            // Re-initialize with CIGSelection
+            initCart();
+            return true;
+        }
+        return false;
+    }
+    
+    // Legacy cart for backward compatibility (only used if CIGSelection not available)
     var cart = cigStockTable.initialCart || [];
 
     function initCart() {
-        updateCartUI();
+        if (useCIGSelection) {
+            // CIGSelection handles its own initialization
+            // Just listen for its events to update UI
+            $(document).off('cigSelectionUpdated.stockTable').on('cigSelectionUpdated.stockTable', function(e, data) {
+                // The CIGSelection manager handles all UI updates
+            });
+            // Remove legacy click handler if it was bound
+            $(document).off('click.cigLegacyCart', '.cig-add-btn');
+        } else {
+            // Legacy fallback
+            updateCartUI();
+            bindLegacyClickHandler();
+        }
+    }
+    
+    function bindLegacyClickHandler() {
+        // Only bind once
+        $(document).off('click.cigLegacyCart', '.cig-add-btn').on('click.cigLegacyCart', '.cig-add-btn', function(e) {
+            // Re-check if CIGSelection became available
+            if (checkCIGSelection()) {
+                // Let CIGSelection handle it
+                return;
+            }
+            
+            e.preventDefault();
+            var $btn = $(this);
+            
+            // Prevent disabled buttons
+            if ($btn.is(':disabled')) return;
+
+            var id = $btn.data('id');
+
+            if (isInCart(id)) {
+                removeFromCart(id);
+            } else {
+                var data = {
+                    id: id,
+                    sku: $btn.data('sku'),
+                    name: $btn.data('title'), 
+                    price: $btn.data('price'),
+                    image: $btn.data('image'),
+                    brand: $btn.data('brand'),
+                    desc: $btn.data('desc'),
+                    qty: 1
+                };
+                addToCart(data);
+            }
+        });
     }
 
     function updateCartUI() {
+        // This is now handled by CIGSelection._updateAllUI()
+        // Only run this if CIGSelection is not available (legacy mode)
+        if (useCIGSelection) return;
+        
         var count = cart.length;
         $('#cig-cart-count').text(count);
         
@@ -34,10 +101,20 @@ jQuery(function($) {
     }
 
     function isInCart(id) {
+        if (useCIGSelection) {
+            return window.CIGSelection.has(id);
+        }
         return cart.some(function(item) { return item.id == id; });
     }
 
     function addToCart(productData) {
+        if (useCIGSelection) {
+            // Delegate to CIGSelection
+            window.CIGSelection.add(productData);
+            return;
+        }
+        
+        // Legacy fallback
         if (!isInCart(productData.id)) {
             // Optimistic update
             cart.push(productData);
@@ -60,6 +137,13 @@ jQuery(function($) {
     }
 
     function removeFromCart(id) {
+        if (useCIGSelection) {
+            // Delegate to CIGSelection
+            window.CIGSelection.remove(id);
+            return;
+        }
+        
+        // Legacy fallback
         // Optimistic update
         cart = cart.filter(function(item) { return item.id != id; });
         updateCartUI();
@@ -72,33 +156,8 @@ jQuery(function($) {
         });
     }
 
-    // Handle Add/Remove Click
-    $(document).on('click', '.cig-add-btn', function(e) {
-        e.preventDefault();
-        var $btn = $(this);
-        
-        // Prevent disabled buttons
-        if ($btn.is(':disabled')) return;
-
-        var id = $btn.data('id');
-
-        if (isInCart(id)) {
-            removeFromCart(id);
-        } else {
-            var data = {
-                id: id,
-                sku: $btn.data('sku'),
-                name: $btn.data('title'), 
-                price: $btn.data('price'),
-                image: $btn.data('image'),
-                brand: $btn.data('brand'),
-                desc: $btn.data('desc'),
-                qty: 1
-            };
-            addToCart(data);
-        }
-    });
-
+    // Initialize - check for CIGSelection or use legacy
+    checkCIGSelection();
     initCart();
 
     // --- 2. STOCK TABLE LOGIC ---
