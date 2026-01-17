@@ -66,13 +66,9 @@ class CIG_Invoice_Manager {
         global $wpdb;
 
         $invoice_number   = sanitize_text_field($data['invoice_number'] ?? '');
-        $customer_id      = intval($data['customer_id'] ?? 0);
         $status           = sanitize_text_field($data['status'] ?? 'fictive');
-        $lifecycle_status = sanitize_text_field($data['lifecycle_status'] ?? 'unfinished');
         $total_amount     = floatval($data['total_amount'] ?? 0);
         $paid_amount      = floatval($data['paid_amount'] ?? 0);
-        $author_id        = intval($data['author_id'] ?? get_current_user_id());
-        $general_note     = sanitize_textarea_field($data['general_note'] ?? '');
         $sold_date        = isset($data['sold_date']) && !empty($data['sold_date']) ? sanitize_text_field($data['sold_date']) : null;
         $items            = $data['items'] ?? [];
         $payments         = $data['payments'] ?? [];
@@ -83,30 +79,32 @@ class CIG_Invoice_Manager {
         }
 
         $now = current_time('mysql');
+        
+        // Calculate balance
+        $balance = $total_amount - $paid_amount;
 
-        // Determine sale_date based on status
-        // Standard (Active) = set sale_date to current time
-        // Fictive = sale_date is NULL
-        $sale_date = ($status === 'standard') ? $now : null;
+        // Determine activation_date based on status
+        // Standard (Active) = set activation_date to current time
+        // Fictive = activation_date is NULL
+        $activation_date = ($status === 'standard') ? $now : null;
 
-        // Insert invoice record
+        // Insert invoice record - uses correct column names matching the database schema
+        // (type, total, paid, balance, activation_date instead of status, total_amount, paid_amount, sale_date)
         $insert_result = $wpdb->insert(
             $this->table_invoices,
             [
-                'invoice_number'   => $invoice_number,
-                'customer_id'      => $customer_id,
-                'status'           => $status,
-                'lifecycle_status' => $lifecycle_status,
-                'total_amount'     => $total_amount,
-                'paid_amount'      => $paid_amount,
-                'created_at'       => $now,
-                'sale_date'        => $sale_date,
-                'sold_date'        => $sold_date,
-                'author_id'        => $author_id,
-                'general_note'     => $general_note,
-                'is_rs_uploaded'   => 0
+                'invoice_number'  => $invoice_number,
+                'type'            => $status,
+                'customer_name'   => '',
+                'customer_tax_id' => '',
+                'total'           => $total_amount,
+                'paid'            => $paid_amount,
+                'balance'         => $balance,
+                'created_at'      => $now,
+                'activation_date' => $activation_date,
+                'sold_date'       => $sold_date
             ],
-            ['%s', '%d', '%s', '%s', '%f', '%f', '%s', '%s', '%s', '%d', '%s', '%d']
+            ['%s', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%s']
         );
 
         if (false === $insert_result) {
@@ -155,10 +153,11 @@ class CIG_Invoice_Manager {
             return new WP_Error('invoice_not_found', __('Invoice not found.', 'cig'));
         }
 
-        $old_status = $existing['invoice']['status'] ?? 'fictive';
+        // Uses correct column name 'type' instead of 'status'
+        $old_status = $existing['invoice']['type'] ?? 'fictive';
         $new_status = sanitize_text_field($data['status'] ?? $old_status);
 
-        // Prepare update data
+        // Prepare update data - uses correct column names matching the database schema
         $update_data   = [];
         $update_format = [];
 
@@ -168,34 +167,27 @@ class CIG_Invoice_Manager {
             $update_format[]               = '%s';
         }
 
-        if (isset($data['customer_id'])) {
-            $update_data['customer_id'] = intval($data['customer_id']);
-            $update_format[]            = '%d';
-        }
-
         if (isset($data['status'])) {
-            $update_data['status'] = $new_status;
-            $update_format[]       = '%s';
-        }
-
-        if (isset($data['lifecycle_status'])) {
-            $update_data['lifecycle_status'] = sanitize_text_field($data['lifecycle_status']);
-            $update_format[]                 = '%s';
+            $update_data['type'] = $new_status;
+            $update_format[]     = '%s';
         }
 
         if (isset($data['total_amount'])) {
-            $update_data['total_amount'] = floatval($data['total_amount']);
-            $update_format[]             = '%f';
+            $update_data['total'] = floatval($data['total_amount']);
+            $update_format[]      = '%f';
         }
-
-        if (isset($data['general_note'])) {
-            $update_data['general_note'] = sanitize_textarea_field($data['general_note']);
-            $update_format[]             = '%s';
+        
+        if (isset($data['paid_amount'])) {
+            $update_data['paid'] = floatval($data['paid_amount']);
+            $update_format[]     = '%f';
         }
-
-        if (isset($data['is_rs_uploaded'])) {
-            $update_data['is_rs_uploaded'] = intval($data['is_rs_uploaded']);
-            $update_format[]               = '%d';
+        
+        // Calculate balance if total or paid is provided
+        if (isset($data['total_amount']) || isset($data['paid_amount'])) {
+            $total = floatval($data['total_amount'] ?? $existing['invoice']['total'] ?? 0);
+            $paid = floatval($data['paid_amount'] ?? $existing['invoice']['paid'] ?? 0);
+            $update_data['balance'] = $total - $paid;
+            $update_format[]        = '%f';
         }
 
         // Handle sold_date field (for warranty sheet display)
@@ -205,10 +197,10 @@ class CIG_Invoice_Manager {
             $update_format[]          = '%s';
         }
 
-        // Date Logic: If status changes from 'fictive' to 'standard', set sale_date to CURRENT_TIME
+        // Date Logic: If status changes from 'fictive' to 'standard', set activation_date to CURRENT_TIME
         if ($old_status === 'fictive' && $new_status === 'standard') {
-            $update_data['sale_date'] = current_time('mysql');
-            $update_format[]          = '%s';
+            $update_data['activation_date'] = current_time('mysql');
+            $update_format[]                = '%s';
         }
 
         // Update invoice if there's data to update
@@ -268,21 +260,21 @@ class CIG_Invoice_Manager {
             return new WP_Error('invoice_not_found', __('Invoice not found.', 'cig'));
         }
 
-        $current_sale_date = $existing['invoice']['sale_date'] ?? null;
+        // Uses correct column names matching the database schema (activation_date, sold_date)
+        $current_activation_date = $existing['invoice']['activation_date'] ?? null;
         $current_sold_date = $existing['invoice']['sold_date'] ?? null;
 
-        // Prepare update data
+        // Prepare update data - uses correct column names (type instead of status)
         $update_data = [
-            'status'           => 'standard',
-            'lifecycle_status' => 'completed'
+            'type' => 'standard'
         ];
-        $update_format = ['%s', '%s'];
+        $update_format = ['%s'];
 
-        // Date Logic: If sale_date is NULL (was Fictive), set to CURRENT_TIME
+        // Date Logic: If activation_date is NULL (was Fictive), set to CURRENT_TIME
         // If already has a date (was Reserved), keep the original date
-        if (empty($current_sale_date)) {
-            $update_data['sale_date'] = current_time('mysql');
-            $update_format[]          = '%s';
+        if (empty($current_activation_date)) {
+            $update_data['activation_date'] = current_time('mysql');
+            $update_format[]                = '%s';
         }
 
         // Auto-fill sold_date if empty when marking as sold
@@ -305,11 +297,11 @@ class CIG_Invoice_Manager {
         }
 
         // Update all item statuses from 'reserved' to 'sold'
-        // Using direct query with prepare for safety
+        // Uses correct column name (status instead of item_status)
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $wpdb->query(
             $wpdb->prepare(
-                "UPDATE {$this->table_items} SET item_status = %s WHERE invoice_id = %d AND item_status = %s",
+                "UPDATE {$this->table_items} SET status = %s WHERE invoice_id = %d AND status = %s",
                 'sold',
                 $invoice_id,
                 'reserved'
@@ -394,9 +386,9 @@ class CIG_Invoice_Manager {
     /**
      * Sync WooCommerce product stock based on invoice items
      *
-     * - If item_status is 'sold', deduct WC product stock using wc_update_product_stock
-     * - If item_status is 'reserved', do NOT deduct WC stock
-     * - If item_status is 'none' (fictive), do nothing
+     * - If status is 'sold', deduct WC product stock using wc_update_product_stock
+     * - If status is 'reserved', do NOT deduct WC stock
+     * - If status is 'none' (fictive), do nothing
      *
      * @param int $invoice_id Invoice ID
      * @return bool True on success
@@ -425,8 +417,10 @@ class CIG_Invoice_Manager {
 
         foreach ($items as $item) {
             $product_id  = intval($item['product_id'] ?? 0);
-            $item_status = strtolower($item['item_status'] ?? 'none');
-            $quantity    = floatval($item['quantity'] ?? 0);
+            // Uses correct column name 'status' instead of 'item_status'
+            $item_status = strtolower($item['status'] ?? 'none');
+            // Uses correct column name 'qty' instead of 'quantity'
+            $quantity    = floatval($item['qty'] ?? 0);
 
             // Skip if no product ID or zero quantity
             if ($product_id <= 0 || $quantity <= 0) {
@@ -486,23 +480,25 @@ class CIG_Invoice_Manager {
                 }
             }
 
+            // Uses correct column names matching the database schema (name, brand, qty, warranty, status)
             $result = $wpdb->insert(
                 $this->table_items,
                 [
-                    'invoice_id'        => $invoice_id,
-                    'product_id'        => intval($item['product_id'] ?? 0),
-                    'product_name'      => sanitize_text_field($item['product_name'] ?? $item['name'] ?? ''),
-                    'sku'               => sanitize_text_field($item['sku'] ?? ''),
-                    'description'       => sanitize_textarea_field($item['description'] ?? $item['desc'] ?? ''),
-                    'quantity'          => $qty,
-                    'price'             => $price,
-                    'total'             => $total,
-                    'item_status'       => sanitize_text_field($item['item_status'] ?? $item['status'] ?? 'none'),
-                    'warranty_duration' => sanitize_text_field($item['warranty_duration'] ?? $item['warranty'] ?? ''),
-                    'reservation_days'  => intval($item['reservation_days'] ?? 0),
-                    'image'             => $image
+                    'invoice_id'       => $invoice_id,
+                    'product_id'       => intval($item['product_id'] ?? 0),
+                    'name'             => sanitize_text_field($item['product_name'] ?? $item['name'] ?? ''),
+                    'sku'              => sanitize_text_field($item['sku'] ?? ''),
+                    'brand'            => sanitize_text_field($item['brand'] ?? ''),
+                    'description'      => sanitize_textarea_field($item['description'] ?? $item['desc'] ?? ''),
+                    'image'            => $image,
+                    'qty'              => $qty,
+                    'price'            => $price,
+                    'total'            => $total,
+                    'warranty'         => sanitize_text_field($item['warranty_duration'] ?? $item['warranty'] ?? ''),
+                    'reservation_days' => intval($item['reservation_days'] ?? 0),
+                    'status'           => sanitize_text_field($item['item_status'] ?? $item['status'] ?? 'none')
                 ],
-                ['%d', '%d', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%s', '%d', '%s']
+                ['%d', '%d', '%s', '%s', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%d', '%s']
             );
 
             if (false === $result) {
@@ -526,15 +522,16 @@ class CIG_Invoice_Manager {
         $success = true;
 
         foreach ($payments as $payment) {
+            // Uses correct column names matching the database schema (payment_method)
             $result = $wpdb->insert(
                 $this->table_payments,
                 [
-                    'invoice_id' => $invoice_id,
-                    'amount'     => floatval($payment['amount'] ?? 0),
-                    'date'       => sanitize_text_field($payment['date'] ?? current_time('mysql')),
-                    'method'     => sanitize_text_field($payment['method'] ?? 'other'),
-                    'user_id'    => intval($payment['user_id'] ?? get_current_user_id()),
-                    'comment'    => sanitize_textarea_field($payment['comment'] ?? '')
+                    'invoice_id'     => $invoice_id,
+                    'amount'         => floatval($payment['amount'] ?? 0),
+                    'date'           => sanitize_text_field($payment['date'] ?? current_time('mysql')),
+                    'payment_method' => sanitize_text_field($payment['method'] ?? 'other'),
+                    'user_id'        => intval($payment['user_id'] ?? get_current_user_id()),
+                    'comment'        => sanitize_textarea_field($payment['comment'] ?? '')
                 ],
                 ['%d', '%f', '%s', '%s', '%d', '%s']
             );
@@ -596,7 +593,7 @@ class CIG_Invoice_Manager {
     }
 
     /**
-     * Recalculate paid_amount from payments table
+     * Recalculate paid from payments table
      * 
      * IMPORTANT: Excludes consignment payments from the paid total.
      * Consignment payments are recorded in the payments table for history,
@@ -609,22 +606,37 @@ class CIG_Invoice_Manager {
         global $wpdb;
 
         // Sum all payments for this invoice, EXCLUDING consignment
-        // Consignment payments are tracked but don't count as cash received
+        // Uses correct column name 'payment_method' instead of 'method'
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $total_paid = $wpdb->get_var(
             $wpdb->prepare(
-                "SELECT COALESCE(SUM(amount), 0) FROM {$this->table_payments} WHERE invoice_id = %d AND method != 'consignment'",
+                "SELECT COALESCE(SUM(amount), 0) FROM {$this->table_payments} WHERE invoice_id = %d AND payment_method != 'consignment'",
                 $invoice_id
             )
         );
+        
+        // Get total to calculate balance
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+        $total = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT total FROM {$this->table_invoices} WHERE id = %d",
+                $invoice_id
+            )
+        );
+        
+        $balance = floatval($total) - floatval($total_paid);
 
-        // Update the invoice's paid_amount
+        // Update the invoice's paid and balance columns
+        // Uses correct column names 'paid' and 'balance' instead of 'paid_amount'
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
         $wpdb->update(
             $this->table_invoices,
-            ['paid_amount' => floatval($total_paid)],
+            [
+                'paid'    => floatval($total_paid),
+                'balance' => $balance
+            ],
             ['id' => $invoice_id],
-            ['%f'],
+            ['%f', '%f'],
             ['%d']
         );
     }
@@ -936,63 +948,60 @@ class CIG_Invoice_Manager {
         $invoice_number = get_post_meta($post_id, '_cig_invoice_number', true);
         $items_raw = get_post_meta($post_id, '_cig_items', true);
         $payment_history = get_post_meta($post_id, '_cig_payment_history', true);
+        
+        $total_amount = floatval(get_post_meta($post_id, '_cig_invoice_total', true));
+        $paid_amount = floatval(get_post_meta($post_id, '_cig_payment_paid_amount', true));
 
-        // Build invoice data structure
+        // Build invoice data structure using correct column names matching the database schema
         $invoice = [
-            'id'               => 0, // No custom table ID
-            'invoice_number'   => $invoice_number,
-            'customer_id'      => intval(get_post_meta($post_id, '_cig_customer_id', true)),
-            'status'           => get_post_meta($post_id, '_cig_invoice_status', true) ?: 'standard',
-            'lifecycle_status' => get_post_meta($post_id, '_cig_lifecycle_status', true) ?: 'unfinished',
-            'total_amount'     => floatval(get_post_meta($post_id, '_cig_invoice_total', true)),
-            'paid_amount'      => floatval(get_post_meta($post_id, '_cig_payment_paid_amount', true)),
-            'created_at'       => get_post_field('post_date', $post_id),
-            'sale_date'        => get_post_field('post_date', $post_id),
-            'author_id'        => intval(get_post_field('post_author', $post_id)),
-            'general_note'     => get_post_meta($post_id, '_cig_general_note', true),
-            'is_rs_uploaded'   => (get_post_meta($post_id, '_cig_rs_uploaded', true) === 'yes') ? 1 : 0
+            'id'              => 0, // No custom table ID
+            'invoice_number'  => $invoice_number,
+            'type'            => get_post_meta($post_id, '_cig_invoice_status', true) ?: 'standard',
+            'customer_name'   => get_post_meta($post_id, '_cig_buyer_name', true),
+            'customer_tax_id' => get_post_meta($post_id, '_cig_buyer_tax_id', true),
+            'total'           => $total_amount,
+            'paid'            => $paid_amount,
+            'balance'         => $total_amount - $paid_amount,
+            'created_at'      => get_post_field('post_date', $post_id),
+            'activation_date' => get_post_field('post_date', $post_id),
+            'sold_date'       => get_post_meta($post_id, '_cig_sold_date', true)
         ];
 
-        // Build items array
+        // Build items array using correct column names matching the database schema
         $items = [];
         if (is_array($items_raw)) {
             foreach ($items_raw as $idx => $item) {
                 $items[] = [
-                    'id'                => $idx + 1,
-                    'invoice_id'        => 0,
-                    'product_id'        => intval($item['product_id'] ?? 0),
-                    'product_name'      => sanitize_text_field($item['name'] ?? ''),
-                    'sku'               => sanitize_text_field($item['sku'] ?? ''),
-                    'quantity'          => floatval($item['qty'] ?? 0),
-                    'price'             => floatval($item['price'] ?? 0),
-                    'item_status'       => sanitize_text_field($item['status'] ?? 'none'),
-                    'warranty_duration' => sanitize_text_field($item['warranty'] ?? ''),
-                    'reservation_days'  => intval($item['reservation_days'] ?? 0),
-                    // Legacy fields for template compatibility
-                    'name'              => sanitize_text_field($item['name'] ?? ''),
-                    'brand'             => sanitize_text_field($item['brand'] ?? ''),
-                    'desc'              => wp_kses_post($item['desc'] ?? ''),
-                    'image'             => esc_url_raw($item['image'] ?? ''),
-                    'qty'               => floatval($item['qty'] ?? 0),
-                    'total'             => floatval($item['total'] ?? 0),
-                    'status'            => sanitize_text_field($item['status'] ?? 'none'),
-                    'warranty'          => sanitize_text_field($item['warranty'] ?? '')
+                    'id'              => $idx + 1,
+                    'invoice_id'      => 0,
+                    'product_id'      => intval($item['product_id'] ?? 0),
+                    'sku'             => sanitize_text_field($item['sku'] ?? ''),
+                    'name'            => sanitize_text_field($item['name'] ?? ''),
+                    'brand'           => sanitize_text_field($item['brand'] ?? ''),
+                    'description'     => wp_kses_post($item['desc'] ?? ''),
+                    'image'           => esc_url_raw($item['image'] ?? ''),
+                    'qty'             => floatval($item['qty'] ?? 0),
+                    'price'           => floatval($item['price'] ?? 0),
+                    'total'           => floatval($item['total'] ?? 0),
+                    'warranty'        => sanitize_text_field($item['warranty'] ?? ''),
+                    'reservation_days' => intval($item['reservation_days'] ?? 0),
+                    'status'          => sanitize_text_field($item['status'] ?? 'none')
                 ];
             }
         }
 
-        // Build payments array
+        // Build payments array using correct column names matching the database schema
         $payments = [];
         if (is_array($payment_history)) {
             foreach ($payment_history as $idx => $payment) {
                 $payments[] = [
-                    'id'         => $idx + 1,
-                    'invoice_id' => 0,
-                    'amount'     => floatval($payment['amount'] ?? 0),
-                    'date'       => sanitize_text_field($payment['date'] ?? ''),
-                    'method'     => sanitize_text_field($payment['method'] ?? 'other'),
-                    'user_id'    => intval($payment['user_id'] ?? 0),
-                    'comment'    => sanitize_text_field($payment['comment'] ?? '')
+                    'id'             => $idx + 1,
+                    'invoice_id'     => 0,
+                    'date'           => sanitize_text_field($payment['date'] ?? ''),
+                    'amount'         => floatval($payment['amount'] ?? 0),
+                    'payment_method' => sanitize_text_field($payment['method'] ?? 'other'),
+                    'comment'        => sanitize_text_field($payment['comment'] ?? ''),
+                    'user_id'        => intval($payment['user_id'] ?? 0)
                 ];
             }
         }
