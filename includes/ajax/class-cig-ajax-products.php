@@ -20,6 +20,9 @@ class CIG_Ajax_Products {
         add_action('wp_ajax_cig_add_to_cart_db', [$this, 'add_to_cart_db']);
         add_action('wp_ajax_cig_remove_from_cart_db', [$this, 'remove_from_cart_db']);
         add_action('wp_ajax_cig_clear_cart_db', [$this, 'clear_cart_db']);
+        
+        // Selection Sync Hook
+        add_action('wp_ajax_cig_sync_selection', [$this, 'sync_selection']);
     }
 
     public function search_products() {
@@ -356,5 +359,49 @@ class CIG_Ajax_Products {
         $user_id = get_current_user_id();
         delete_user_meta($user_id, '_cig_temp_cart');
         wp_send_json_success();
+    }
+
+    /**
+     * Sync entire selection from client to server
+     * Replaces the entire user's selection with the provided data
+     */
+    public function sync_selection() {
+        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'manage_woocommerce');
+        
+        $raw_selection = isset($_POST['selection']) ? wp_unslash($_POST['selection']) : '[]';
+        $selection = json_decode($raw_selection, true);
+        
+        if (!is_array($selection)) {
+            wp_send_json_error(['message' => 'Invalid selection data']);
+        }
+        
+        $user_id = get_current_user_id();
+        $sanitized_selection = [];
+        
+        foreach ($selection as $item) {
+            $sanitized_selection[] = [
+                'id'    => intval($item['id'] ?? 0),
+                'sku'   => sanitize_text_field($item['sku'] ?? ''),
+                'name'  => sanitize_text_field($item['name'] ?? ''),
+                'price' => floatval($item['price'] ?? 0),
+                'image' => esc_url_raw($item['image'] ?? ''),
+                'brand' => sanitize_text_field($item['brand'] ?? ''),
+                'desc'  => wp_kses_post($item['desc'] ?? ''),
+                'qty'   => intval($item['qty'] ?? 1)
+            ];
+        }
+        
+        // Filter out invalid items (no ID)
+        $sanitized_selection = array_filter($sanitized_selection, function($item) {
+            return !empty($item['id']);
+        });
+        $sanitized_selection = array_values($sanitized_selection);
+        
+        update_user_meta($user_id, '_cig_temp_cart', $sanitized_selection);
+        
+        wp_send_json_success([
+            'selection' => $sanitized_selection, 
+            'count' => count($sanitized_selection)
+        ]);
     }
 }

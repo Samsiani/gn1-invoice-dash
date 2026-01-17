@@ -233,10 +233,19 @@ class CIG_Core {
 
             wp_enqueue_script('jquery-ui-autocomplete');
 
+            // Enqueue the selection sync manager
+            wp_enqueue_script(
+                'cig-selection-sync',
+                CIG_ASSETS_URL . 'js/cig-selection-sync.js',
+                ['jquery'],
+                CIG_VERSION,
+                true
+            );
+
             wp_enqueue_script(
                 'cig-invoice',
                 CIG_ASSETS_URL . 'js/invoice.js',
-                ['jquery', 'jquery-ui-autocomplete'],
+                ['jquery', 'jquery-ui-autocomplete', 'cig-selection-sync'],
                 CIG_VERSION,
                 true
             );
@@ -354,10 +363,19 @@ class CIG_Core {
                 CIG_VERSION
             );
 
+            // Enqueue the selection sync manager first
+            wp_enqueue_script(
+                'cig-selection-sync',
+                CIG_ASSETS_URL . 'js/cig-selection-sync.js',
+                ['jquery'],
+                CIG_VERSION,
+                true
+            );
+
             wp_enqueue_script(
                 'cig-products-stock-table',
                 CIG_ASSETS_URL . 'js/products-stock-table.js',
-                ['jquery'],
+                ['jquery', 'cig-selection-sync'],
                 CIG_VERSION,
                 true
             );
