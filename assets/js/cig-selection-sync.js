@@ -6,6 +6,15 @@
  * 
  * Uses localStorage for immediate sync + AJAX for persistent storage in User Meta.
  * 
+ * Dependencies:
+ * - jQuery
+ * - cigStockTable.initialCart or cigAjax.initialCart (optional, for server-side initial data)
+ * - cigStockTable.ajax_url/nonce or cigAjax.ajax_url/nonce (for AJAX sync)
+ * 
+ * Events dispatched:
+ * - cigSelectionReady: Fired when selection manager is initialized
+ * - cigSelectionUpdated: Fired whenever selection changes (add/remove/clear)
+ * 
  * @package CIG
  * @since 5.0.0
  */
@@ -17,6 +26,10 @@
         return; // Already initialized
     }
 
+    // Configuration constants
+    var SYNC_DEBOUNCE_MS = 500;     // Debounce time for server sync
+    var LOCAL_STORAGE_KEY = 'cig_selection';
+
     /**
      * CIGSelection - Global Selection Manager
      */
@@ -26,7 +39,7 @@
         _items: [],
         _initialized: false,
         _syncTimeout: null,
-        _localStorageKey: 'cig_selection',
+        _localStorageKey: LOCAL_STORAGE_KEY,
 
         /**
          * Initialize the selection manager
@@ -273,10 +286,10 @@
                 clearTimeout(this._syncTimeout);
             }
             
-            // Debounce server sync by 500ms
+            // Debounce server sync
             this._syncTimeout = setTimeout(function() {
                 self._syncToServer();
-            }, 500);
+            }, SYNC_DEBOUNCE_MS);
         },
 
         /**
