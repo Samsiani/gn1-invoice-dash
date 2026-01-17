@@ -1,0 +1,447 @@
+<?php
+/**
+ * Custom WooCommerce My Account Dashboard
+ * 
+ * Replaces standard WooCommerce account tabs with a custom management panel
+ * for users with manage_woocommerce capability.
+ *
+ * @package CIG
+ * @since 4.0.0
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+/**
+ * CIG_Account_Dashboard Class
+ *
+ * Customizes WooCommerce My Account page for admin users.
+ */
+class CIG_Account_Dashboard {
+
+    /**
+     * Primary color for the dashboard
+     *
+     * @var string
+     */
+    private $primary_color = '#50529d';
+
+    /**
+     * Constructor
+     */
+    public function __construct() {
+        // Only run if WooCommerce is active
+        if (!class_exists('WooCommerce')) {
+            return;
+        }
+
+        // Only apply customizations for users with manage_woocommerce capability
+        add_action('init', [$this, 'init_hooks']);
+    }
+
+    /**
+     * Initialize hooks after WordPress is ready
+     *
+     * @return void
+     */
+    public function init_hooks() {
+        if (!is_user_logged_in() || !current_user_can('manage_woocommerce')) {
+            return;
+        }
+
+        // Filter the My Account menu items
+        add_filter('woocommerce_account_menu_items', [$this, 'customize_menu_items'], 99);
+
+        // Replace the My Account dashboard content
+        add_action('woocommerce_account_dashboard', [$this, 'render_dashboard_cards'], 5);
+
+        // Remove the default dashboard content
+        remove_action('woocommerce_account_dashboard', 'woocommerce_account_dashboard');
+
+        // Enqueue custom styles
+        add_action('wp_enqueue_scripts', [$this, 'enqueue_styles']);
+
+        // Handle redirects for custom menu items
+        add_action('template_redirect', [$this, 'handle_custom_menu_redirects']);
+    }
+
+    /**
+     * Handle redirects for custom menu items
+     *
+     * Redirects custom endpoints to their actual destination URLs.
+     *
+     * @return void
+     */
+    public function handle_custom_menu_redirects() {
+        // Security: Verify user has proper capability before redirecting
+        if (!is_user_logged_in() || !current_user_can('manage_woocommerce')) {
+            return;
+        }
+
+        if (!is_account_page()) {
+            return;
+        }
+
+        // Check if we're on a custom endpoint via the request URI
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash($_SERVER['REQUEST_URI'])) : '';
+
+        $redirect_map = $this->get_menu_redirect_urls();
+
+        foreach ($redirect_map as $endpoint => $url) {
+            // Use precise matching with trailing slash or end of string to avoid false positives
+            $pattern = '/my-account/' . $endpoint;
+            if (strpos($request_uri, $pattern . '/') !== false || 
+                substr($request_uri, -strlen($pattern)) === $pattern ||
+                strpos($request_uri, $pattern . '?') !== false) {
+                wp_safe_redirect($url);
+                exit;
+            }
+        }
+    }
+
+    /**
+     * Get the redirect URLs for custom menu items
+     *
+     * @return array Map of endpoint slugs to destination URLs
+     */
+    private function get_menu_redirect_urls() {
+        return [
+            'cig-invoices'       => $this->get_invoice_page_url(),
+            'cig-customers'      => admin_url('edit.php?post_type=cig_customer'),
+            'cig-stock-requests' => admin_url('admin.php?page=cig-stock-requests'),
+            'cig-accountant'     => $this->get_accountant_page_url(),
+            'cig-statistics'     => admin_url('admin.php?page=cig-statistics'),
+        ];
+    }
+
+    /**
+     * Get the invoice shortcode page URL
+     *
+     * Looks for a page with the /invoice-shortcode/ slug, falls back to create new invoice page.
+     *
+     * @return string URL to the invoice page
+     */
+    private function get_invoice_page_url() {
+        $page = get_page_by_path('invoice-shortcode');
+        if ($page) {
+            return get_permalink($page->ID);
+        }
+        // Fallback to admin new invoice page
+        return admin_url('post-new.php?post_type=invoice');
+    }
+
+    /**
+     * Get the accountant page URL
+     *
+     * Looks for a page with the /accountant/ slug, falls back to admin accountant page.
+     *
+     * @return string URL to the accountant page
+     */
+    private function get_accountant_page_url() {
+        $page = get_page_by_path('accountant');
+        if ($page) {
+            return get_permalink($page->ID);
+        }
+        // Fallback to admin page if exists
+        return admin_url('admin.php?page=cig-accountant');
+    }
+
+    /**
+     * Customize the My Account menu items
+     *
+     * Removes all default links except "Logout" and adds custom plugin links.
+     * Custom menu items redirect to external URLs via handle_custom_menu_redirects().
+     *
+     * @param array $items Default menu items
+     * @return array Modified menu items
+     */
+    public function customize_menu_items($items) {
+        // Preserve the logout item
+        $logout = isset($items['customer-logout']) ? $items['customer-logout'] : __('Logout', 'cig');
+
+        // Build new menu items
+        $new_items = [
+            'dashboard' => __('Dashboard', 'cig'),
+        ];
+
+        // Add custom menu items - redirects are handled by handle_custom_menu_redirects()
+        $new_items['cig-invoices']       = __('Invoices', 'cig');
+        $new_items['cig-customers']      = __('Customers', 'cig');
+        $new_items['cig-stock-requests'] = __('Stock Requests', 'cig');
+        $new_items['cig-accountant']     = __('Accountant', 'cig');
+        $new_items['cig-statistics']     = __('Statistics', 'cig');
+
+        // Add logout at the end
+        $new_items['customer-logout'] = $logout;
+
+        return $new_items;
+    }
+
+    /**
+     * Render the custom dashboard cards
+     *
+     * Displays a responsive grid of 5 cards with Dashicons, titles, and links.
+     *
+     * @return void
+     */
+    public function render_dashboard_cards() {
+        // Define the dashboard cards using helper methods for URL validation
+        $cards = [
+            [
+                'title'    => __('Invoices', 'cig'),
+                'icon'     => 'dashicons-media-text',
+                'link'     => $this->get_invoice_page_url(),
+                'desc'     => __('Create and manage invoices', 'cig'),
+            ],
+            [
+                'title'    => __('Customers', 'cig'),
+                'icon'     => 'dashicons-groups',
+                'link'     => admin_url('edit.php?post_type=cig_customer'),
+                'desc'     => __('View customer list', 'cig'),
+            ],
+            [
+                'title'    => __('Stock Requests', 'cig'),
+                'icon'     => 'dashicons-archive',
+                'link'     => admin_url('admin.php?page=cig-stock-requests'),
+                'desc'     => __('Manage stock requests', 'cig'),
+            ],
+            [
+                'title'    => __('Accountant', 'cig'),
+                'icon'     => 'dashicons-calculator',
+                'link'     => $this->get_accountant_page_url(),
+                'desc'     => __('Accounting dashboard', 'cig'),
+            ],
+            [
+                'title'    => __('Statistics', 'cig'),
+                'icon'     => 'dashicons-chart-bar',
+                'link'     => admin_url('admin.php?page=cig-statistics'),
+                'desc'     => __('View sales statistics', 'cig'),
+            ],
+        ];
+
+        // Output the dashboard HTML
+        ?>
+        <div class="cig-account-dashboard">
+            <h2 class="cig-dashboard-title"><?php esc_html_e('Management Panel', 'cig'); ?></h2>
+            <div class="cig-dashboard-grid">
+                <?php foreach ($cards as $card) : ?>
+                    <a href="<?php echo esc_url($card['link']); ?>" class="cig-dashboard-card">
+                        <span class="dashicons <?php echo esc_attr($card['icon']); ?> cig-card-icon"></span>
+                        <h3 class="cig-card-title"><?php echo esc_html($card['title']); ?></h3>
+                        <p class="cig-card-desc"><?php echo esc_html($card['desc']); ?></p>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Enqueue custom styles for the My Account dashboard
+     *
+     * @return void
+     */
+    public function enqueue_styles() {
+        // Only on My Account page
+        if (!is_account_page()) {
+            return;
+        }
+
+        // Enqueue Dashicons
+        wp_enqueue_style('dashicons');
+
+        // Add inline styles
+        $custom_css = $this->get_dashboard_styles();
+        wp_add_inline_style('dashicons', $custom_css);
+    }
+
+    /**
+     * Get the dashboard CSS styles
+     *
+     * @return string CSS styles
+     */
+    private function get_dashboard_styles() {
+        $primary = esc_attr($this->primary_color);
+        // Convert hex to rgba for shadow (primary color with transparency)
+        $primary_rgba = $this->hex_to_rgba($this->primary_color, 0.15);
+
+        return "
+            /* CIG Account Dashboard Styles */
+            .cig-account-dashboard {
+                font-family: 'FiraGO', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+                padding: 20px 0;
+            }
+
+            .cig-dashboard-title {
+                font-family: 'FiraGO', sans-serif;
+                font-size: 24px;
+                font-weight: 600;
+                color: {$primary};
+                margin: 0 0 25px 0;
+                padding-bottom: 10px;
+                border-bottom: 2px solid {$primary};
+            }
+
+            .cig-dashboard-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 20px;
+                max-width: 1200px;
+            }
+
+            .cig-dashboard-card {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 30px 20px;
+                background: #fff;
+                border: 2px solid #e0e0e5;
+                border-radius: 12px;
+                text-decoration: none;
+                transition: all 0.3s ease;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+                min-height: 180px;
+            }
+
+            .cig-dashboard-card:hover {
+                border-color: {$primary};
+                box-shadow: 0 8px 25px {$primary_rgba};
+                transform: translateY(-3px);
+            }
+
+            .cig-card-icon {
+                font-size: 48px;
+                width: 48px;
+                height: 48px;
+                color: {$primary};
+                margin-bottom: 15px;
+                transition: transform 0.3s ease;
+            }
+
+            .cig-dashboard-card:hover .cig-card-icon {
+                transform: scale(1.1);
+            }
+
+            .cig-card-title {
+                font-family: 'FiraGO', sans-serif;
+                font-size: 18px;
+                font-weight: 600;
+                color: #333;
+                margin: 0 0 8px 0;
+                text-align: center;
+            }
+
+            .cig-card-desc {
+                font-family: 'FiraGO', sans-serif;
+                font-size: 13px;
+                color: #666;
+                margin: 0;
+                text-align: center;
+                line-height: 1.4;
+            }
+
+            /* WooCommerce My Account Menu Styling */
+            .woocommerce-MyAccount-navigation ul {
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            }
+
+            .woocommerce-MyAccount-navigation ul li {
+                margin-bottom: 5px;
+            }
+
+            .woocommerce-MyAccount-navigation ul li a {
+                font-family: 'FiraGO', sans-serif;
+                display: block;
+                padding: 12px 15px;
+                color: #333;
+                text-decoration: none;
+                border-radius: 6px;
+                transition: all 0.2s ease;
+            }
+
+            .woocommerce-MyAccount-navigation ul li a:hover,
+            .woocommerce-MyAccount-navigation ul li.is-active a {
+                background: {$primary};
+                color: #fff;
+            }
+
+            /* Responsive adjustments */
+            @media (max-width: 768px) {
+                .cig-dashboard-grid {
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 15px;
+                }
+
+                .cig-dashboard-card {
+                    padding: 20px 15px;
+                    min-height: 150px;
+                }
+
+                .cig-card-icon {
+                    font-size: 36px;
+                    width: 36px;
+                    height: 36px;
+                }
+
+                .cig-card-title {
+                    font-size: 16px;
+                }
+            }
+
+            @media (max-width: 480px) {
+                .cig-dashboard-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+        ";
+    }
+
+    /**
+     * Convert hex color to rgba
+     *
+     * @param string $hex   Hex color code (e.g., '#50529d')
+     * @param float  $alpha Alpha transparency (0-1)
+     * @return string RGBA color string
+     */
+    private function hex_to_rgba($hex, $alpha = 1) {
+        // Remove # if present
+        $hex = ltrim($hex, '#');
+
+        // Validate hex input length
+        $len = strlen($hex);
+        if ($len !== 3 && $len !== 6) {
+            // Fallback to primary color if invalid
+            return sprintf('rgba(80, 82, 157, %s)', $alpha);
+        }
+
+        // Parse hex values
+        if ($len === 3) {
+            $r = hexdec(str_repeat(substr($hex, 0, 1), 2));
+            $g = hexdec(str_repeat(substr($hex, 1, 1), 2));
+            $b = hexdec(str_repeat(substr($hex, 2, 1), 2));
+        } else {
+            $r = hexdec(substr($hex, 0, 2));
+            $g = hexdec(substr($hex, 2, 2));
+            $b = hexdec(substr($hex, 4, 2));
+        }
+
+        return sprintf('rgba(%d, %d, %d, %s)', $r, $g, $b, $alpha);
+    }
+
+    /**
+     * Get singleton instance
+     *
+     * @return CIG_Account_Dashboard
+     */
+    public static function instance() {
+        static $instance = null;
+        if (null === $instance) {
+            $instance = new self();
+        }
+        return $instance;
+    }
+}

@@ -175,6 +175,9 @@ final class CIG_Invoice_Generator {
         
         // Load User Restrictions
         require_once CIG_INCLUDES_DIR . 'class-cig-user-restrictions.php';
+        
+        // Load Account Dashboard (WooCommerce My Account customization)
+        require_once CIG_INCLUDES_DIR . 'class-cig-account-dashboard.php';
     }
 
     /**
@@ -225,6 +228,9 @@ final class CIG_Invoice_Generator {
         
         // Init User Restrictions
         $this->user_restrictions = new CIG_User_Restrictions();
+        
+        // Init Account Dashboard (WooCommerce My Account customization)
+        CIG_Account_Dashboard::instance();
         
         // Init Migrator (4.0.0) - handles admin notices for migration
         $this->migrator = new CIG_Migrator();
