@@ -74,12 +74,14 @@ class CIG_Account_Dashboard {
      * @return void
      */
     public function handle_custom_menu_redirects() {
-        if (!is_account_page()) {
+        // Security: Verify user has proper capability before redirecting
+        if (!is_user_logged_in() || !current_user_can('manage_woocommerce')) {
             return;
         }
 
-        global $wp;
-        $current_endpoint = isset($wp->query_vars['pagename']) ? $wp->query_vars['pagename'] : '';
+        if (!is_account_page()) {
+            return;
+        }
 
         // Check if we're on a custom endpoint via the request URI
         $request_uri = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash($_SERVER['REQUEST_URI'])) : '';
@@ -87,7 +89,11 @@ class CIG_Account_Dashboard {
         $redirect_map = $this->get_menu_redirect_urls();
 
         foreach ($redirect_map as $endpoint => $url) {
-            if (strpos($request_uri, '/my-account/' . $endpoint) !== false) {
+            // Use precise matching with trailing slash or end of string to avoid false positives
+            $pattern = '/my-account/' . $endpoint;
+            if (strpos($request_uri, $pattern . '/') !== false || 
+                substr($request_uri, -strlen($pattern)) === $pattern ||
+                strpos($request_uri, $pattern . '?') !== false) {
                 wp_safe_redirect($url);
                 exit;
             }
@@ -257,6 +263,8 @@ class CIG_Account_Dashboard {
      */
     private function get_dashboard_styles() {
         $primary = esc_attr($this->primary_color);
+        // Convert hex to rgba for shadow (primary color with transparency)
+        $primary_rgba = $this->hex_to_rgba($this->primary_color, 0.15);
 
         return "
             /* CIG Account Dashboard Styles */
@@ -299,7 +307,7 @@ class CIG_Account_Dashboard {
 
             .cig-dashboard-card:hover {
                 border-color: {$primary};
-                box-shadow: 0 8px 25px rgba(80, 82, 157, 0.15);
+                box-shadow: 0 8px 25px {$primary_rgba};
                 transform: translateY(-3px);
             }
 
@@ -390,6 +398,38 @@ class CIG_Account_Dashboard {
                 }
             }
         ";
+    }
+
+    /**
+     * Convert hex color to rgba
+     *
+     * @param string $hex   Hex color code (e.g., '#50529d')
+     * @param float  $alpha Alpha transparency (0-1)
+     * @return string RGBA color string
+     */
+    private function hex_to_rgba($hex, $alpha = 1) {
+        // Remove # if present
+        $hex = ltrim($hex, '#');
+
+        // Validate hex input length
+        $len = strlen($hex);
+        if ($len !== 3 && $len !== 6) {
+            // Fallback to primary color if invalid
+            return sprintf('rgba(80, 82, 157, %s)', $alpha);
+        }
+
+        // Parse hex values
+        if ($len === 3) {
+            $r = hexdec(str_repeat(substr($hex, 0, 1), 2));
+            $g = hexdec(str_repeat(substr($hex, 1, 1), 2));
+            $b = hexdec(str_repeat(substr($hex, 2, 1), 2));
+        } else {
+            $r = hexdec(substr($hex, 0, 2));
+            $g = hexdec(substr($hex, 2, 2));
+            $b = hexdec(substr($hex, 4, 2));
+        }
+
+        return sprintf('rgba(%d, %d, %d, %s)', $r, $g, $b, $alpha);
     }
 
     /**
