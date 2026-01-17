@@ -165,99 +165,114 @@ class CIG_Ajax_Invoices {
      * Main logic for saving/updating invoice
      */
     private function process_invoice_save($update) {
-        $this->security->verify_ajax_request('cig_nonce', 'nonce', 'manage_woocommerce');
-        
-        $raw_payload = wp_unslash($_POST['payload'] ?? '');
-        $d = json_decode($raw_payload, true);
-
-        if (!is_array($d)) {
-            wp_send_json_error(['message' => 'Invalid data format']);
-        }
-        
-        // Security Check for Completed Invoices
-        if ($update) {
-            $id = intval($d['invoice_id'] ?? 0);
-            $current_lifecycle = get_post_meta($id, '_cig_lifecycle_status', true);
-            if ($current_lifecycle === 'completed' && !current_user_can('administrator')) {
-                wp_send_json_error(['message' => 'დასრულებული ინვოისის რედაქტირება აკრძალულია.'], 403);
-            }
-        }
-
-        // Validation
-        $buyer = $d['buyer'] ?? [];
-        if (empty($buyer['name']) || empty($buyer['tax_id']) || empty($buyer['phone'])) {
-            wp_send_json_error(['message' => 'შეავსეთ მყიდველის სახელი, ს/კ და ტელეფონი.'], 400);
-        }
-
-        $num = sanitize_text_field($d['invoice_number'] ?? '');
-        
-        // NEW: General Note
-        $general_note = sanitize_textarea_field($d['general_note'] ?? '');
-        
-        // NEW: Sold Date (for warranty sheet)
-        $sold_date = sanitize_text_field($d['sold_date'] ?? '');
-        
-        // 1. Determine Status based on Payment
-        $hist = $this->process_payment_history($d['payment']['history'] ?? []);
-        
-        // Calculate two totals: real cash paid (excluding consignment) and consignment total
-        $real_cash_paid = 0;
-        $consignment_total = 0;
-        foreach ($hist as $h) {
-            $amount = floatval($h['amount'] ?? 0);
-            $method = strtolower($h['method'] ?? '');
-            if ($method === 'consignment') {
-                $consignment_total += $amount;
-            } else {
-                $real_cash_paid += $amount;
-            }
-        }
-        
-        // Total paid for DB storage (excludes consignment - used in manager_data below)
-        $paid = $real_cash_paid;
-
-        // AUTO-STATUS LOGIC:
-        // If real cash paid > 0 OR consignment exists, it's a Standard Sale (item left stock)
-        // Only mark as fictive if no payments of any kind
-        $st = ($real_cash_paid > 0 || $consignment_total > 0) ? 'standard' : 'fictive';
-
-        // 2. Process Items & Enforce Item Statuses
-        $items = array_filter((array)($d['items'] ?? []), function($r) { 
-            return !empty($r['name']); 
-        });
-
-        if (empty($items)) {
-            wp_send_json_error(['message' => 'დაამატეთ პროდუქტები'], 400);
-        }
-
-        $processed_items = [];
-        foreach ($items as $item) {
-            $current_item_status = $item['status'] ?? 'none';
+        try {
+            $this->security->verify_ajax_request('cig_nonce', 'nonce', 'manage_woocommerce');
             
-            if ($st === 'fictive') {
-                $item['status'] = 'none'; 
-                $item['reservation_days'] = 0;
-            } else {
-                if ($current_item_status === 'none' || empty($current_item_status)) {
-                    $item['status'] = 'reserved';
+            $raw_payload = wp_unslash($_POST['payload'] ?? '');
+            
+            // DEBUG: Log payload metadata for troubleshooting (not sensitive content)
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log('CIG Invoice Save - Payload size: ' . strlen($raw_payload) . ' bytes');
+            
+            $d = json_decode($raw_payload, true);
+
+            if (!is_array($d)) {
+                wp_send_json_error(['message' => 'Invalid data format']);
+            }
+            
+            // Security Check for Completed Invoices
+            if ($update) {
+                $id = intval($d['invoice_id'] ?? 0);
+                $current_lifecycle = get_post_meta($id, '_cig_lifecycle_status', true);
+                if ($current_lifecycle === 'completed' && !current_user_can('administrator')) {
+                    wp_send_json_error(['message' => 'დასრულებული ინვოისის რედაქტირება აკრძალულია.'], 403);
                 }
             }
 
-            // BUG FIX: Explicitly calculate item_total (qty * price) to ensure it's not 0
-            $qty   = floatval($item['qty'] ?? 0);
-            $price = floatval($item['price'] ?? 0);
-            $item_total = floatval($item['total'] ?? 0);
-            
-            // Calculate total if missing or zero
-            if ($item_total <= 0 && $qty > 0 && $price > 0) {
-                $item['total'] = $qty * $price;
+            // Validation
+            $buyer = $d['buyer'] ?? [];
+            if (empty($buyer['name']) || empty($buyer['tax_id']) || empty($buyer['phone'])) {
+                wp_send_json_error(['message' => 'შეავსეთ მყიდველის სახელი, ს/კ და ტელეფონი.'], 400);
             }
 
-            $processed_items[] = $item;
-        }
-        $items = $processed_items; 
-        
-        $pid = 0;
+            $num = sanitize_text_field($d['invoice_number'] ?? '');
+            
+            // NEW: General Note
+            $general_note = sanitize_textarea_field($d['general_note'] ?? '');
+            
+            // NEW: Sold Date (for warranty sheet)
+            $sold_date = sanitize_text_field($d['sold_date'] ?? '');
+            
+            // 1. Determine Status based on Payment
+            $hist = $this->process_payment_history($d['payment']['history'] ?? []);
+            
+            // Calculate two totals: real cash paid (excluding consignment) and consignment total
+            $real_cash_paid = 0;
+            $consignment_total = 0;
+            foreach ($hist as $h) {
+                $amount = floatval($h['amount'] ?? 0);
+                $method = strtolower($h['method'] ?? '');
+                if ($method === 'consignment') {
+                    $consignment_total += $amount;
+                } else {
+                    $real_cash_paid += $amount;
+                }
+            }
+            
+            // Total paid for DB storage (excludes consignment - used in manager_data below)
+            $paid = $real_cash_paid;
+
+            // AUTO-STATUS LOGIC:
+            // If real cash paid > 0 OR consignment exists, it's a Standard Sale (item left stock)
+            // Only mark as fictive if no payments of any kind
+            $st = ($real_cash_paid > 0 || $consignment_total > 0) ? 'standard' : 'fictive';
+
+            // 2. Process Items & Enforce Item Statuses
+            $items = array_filter((array)($d['items'] ?? []), function($r) { 
+                return !empty($r['name']); 
+            });
+
+            if (empty($items)) {
+                wp_send_json_error(['message' => 'დაამატეთ პროდუქტები'], 400);
+            }
+
+            $processed_items = [];
+            foreach ($items as $item) {
+                $current_item_status = $item['status'] ?? 'none';
+                
+                if ($st === 'fictive') {
+                    $item['status'] = 'none'; 
+                    $item['reservation_days'] = 0;
+                } else {
+                    if ($current_item_status === 'none' || empty($current_item_status)) {
+                        $item['status'] = 'reserved';
+                    }
+                }
+
+                // BUG FIX: Explicitly calculate item_total (qty * price) to ensure it's not 0
+                $qty   = floatval($item['qty'] ?? 0);
+                $price = floatval($item['price'] ?? 0);
+                $item_total = floatval($item['total'] ?? 0);
+                
+                // Calculate total if missing or zero
+                if ($item_total <= 0 && $qty > 0 && $price > 0) {
+                    $item['total'] = $qty * $price;
+                }
+                
+                // SANITIZE ITEM SPECS: Strip HTML tags and slashes from description
+                // This prevents database crashes from complex HTML or escaped characters
+                if (isset($item['desc'])) {
+                    $item['desc'] = wp_strip_all_tags(stripslashes($item['desc']));
+                }
+                if (isset($item['description'])) {
+                    $item['description'] = wp_strip_all_tags(stripslashes($item['description']));
+                }
+
+                $processed_items[] = $item;
+            }
+            $items = $processed_items; 
+            
+            $pid = 0;
 
         if ($update) {
             $id = intval($d['invoice_id']);
@@ -387,6 +402,12 @@ class CIG_Ajax_Invoices {
             'invoice_number' => $new_num,
             'status'         => $st
         ]);
+        } catch (Exception $e) {
+            // Log the exception for debugging
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log('CIG Invoice Save Error: ' . $e->getMessage());
+            wp_send_json_error(['message' => 'Server error: ' . $e->getMessage()], 500);
+        }
     }
 
     /**
@@ -557,6 +578,11 @@ class CIG_Ajax_Invoices {
                     $image = $sanitized;
                 }
             }
+            
+            // SANITIZE DESCRIPTION: Strip HTML tags and slashes to prevent DB crashes
+            // from complex HTML or escaped characters imported from WooCommerce
+            $raw_desc = $item['desc'] ?? $item['description'] ?? '';
+            $description = wp_strip_all_tags(stripslashes($raw_desc));
 
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
             $wpdb->insert(
@@ -567,7 +593,7 @@ class CIG_Ajax_Invoices {
                     'name'              => sanitize_text_field($item['name'] ?? ''),
                     'sku'               => sanitize_text_field($item['sku'] ?? ''),
                     'brand'             => sanitize_text_field($item['brand'] ?? ''),
-                    'description'       => sanitize_textarea_field($item['desc'] ?? $item['description'] ?? ''),
+                    'description'       => sanitize_textarea_field($description),
                     'image'             => $image,
                     'qty'               => $qty,
                     'price'             => $price,
