@@ -84,8 +84,12 @@ jQuery(function ($) {
 
       var $tbody = $('#invoice-items');
       
-      // FRESH DATA INJECTION: Clear ALL existing rows to ensure no stale/cached data
+      // FRESH DATA INJECTION: Clear existing rows and show loading indicator
       $tbody.empty();
+      $tbody.html('<tr class="cig-loading-row"><td colspan="10" style="text-align:center;padding:20px;color:#666;">' +
+          '<span class="dashicons dashicons-update" style="animation: cig-spin 1s linear infinite;"></span> ' +
+          (cigAjax.i18n?.loading || 'Loading fresh product data...') +
+          '</td></tr>');
 
       // Collect valid product IDs for batch request
       var productIds = [];

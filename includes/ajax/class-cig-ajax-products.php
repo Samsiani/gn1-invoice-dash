@@ -527,13 +527,18 @@ class CIG_Ajax_Products {
                         // Global Attribute (taxonomy-based)
                         $attr_value = $product->get_attribute($attr_name);
                     } else {
-                        // Custom Attribute (text-based)
+                        // Custom Attribute (text-based) - sanitize options to prevent XSS
                         $options = $attribute->get_options();
-                        $attr_value = is_array($options) ? implode(', ', $options) : '';
+                        if (is_array($options)) {
+                            $sanitized_options = array_map('sanitize_text_field', $options);
+                            $attr_value = implode(', ', $sanitized_options);
+                        } else {
+                            $attr_value = '';
+                        }
                     }
                     
                     if (!empty($attr_value)) {
-                        $spec_lines[] = '• ' . $attr_label . ': ' . $attr_value;
+                        $spec_lines[] = '• ' . esc_html($attr_label) . ': ' . esc_html($attr_value);
                     }
                 }
             }
