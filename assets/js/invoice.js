@@ -718,6 +718,7 @@ jQuery(function ($) {
             // POST-SAVE BASKET RESET: Only clear after database returns 200 OK
             // Clear CIGSelection manager with force flag (handles both localStorage and server sync)
             if (typeof window.CIGSelection !== 'undefined') {
+                // Pass true to force server sync and completely clear the selection
                 window.CIGSelection.clear(true);
             }
             // Also explicitly clear localStorage key as a fallback

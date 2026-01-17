@@ -170,9 +170,9 @@ class CIG_Ajax_Invoices {
             
             $raw_payload = wp_unslash($_POST['payload'] ?? '');
             
-            // DEBUG: Log raw payload for troubleshooting malformed data
+            // DEBUG: Log payload metadata for troubleshooting (not sensitive content)
             // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-            error_log('CIG Invoice Save - Raw Payload: ' . substr($raw_payload, 0, 5000));
+            error_log('CIG Invoice Save - Payload size: ' . strlen($raw_payload) . ' bytes');
             
             $d = json_decode($raw_payload, true);
 
